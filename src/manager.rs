@@ -475,7 +475,16 @@ impl StreamLoadManager {
 }
 
 fn to_header_val(name: &str, val: &str) -> Result<HeaderValue> {
-    HeaderValue::from_str(val)
+    let escaped = if (name == "row_delimiter" || name == "column_separator")
+        && (val == "\n" || val == "\r" || val == "\t" || val == "\r\n")
+    {
+        val.replace('\n', "\\n")
+            .replace('\r', "\\r")
+            .replace('\t', "\\t")
+    } else {
+        val.to_string()
+    };
+    HeaderValue::from_str(&escaped)
         .map_err(|e| Error::Transaction(format!("Invalid character in header '{name}': {e}")))
 }
 
