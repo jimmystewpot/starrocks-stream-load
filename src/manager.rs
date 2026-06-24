@@ -597,9 +597,9 @@ pub fn convert_delimiter(origin_str: &str) -> Result<String> {
                 "Invalid delimiter '{origin_str}': empty hex string"
             )));
         }
-        if !hex_str.len().is_multiple_of(2) {
+        if hex_str.len() % 2 != 0 {
             return Err(Error::Transaction(format!(
-                "Invalid delimiter '{origin_str}': hex length must be a even number"
+                "Invalid delimiter '{origin_str}': hex length must be an even number"
             )));
         }
 
@@ -722,7 +722,7 @@ mod tests {
         assert!(
             err_len
                 .to_string()
-                .contains("hex length must be a even number")
+                .contains("hex length must be an even number")
         );
 
         // Invalid hex character error
