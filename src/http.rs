@@ -235,3 +235,22 @@ fn base64_encode(input: &str) -> String {
 
     result
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_base64_encode() {
+        // Empty
+        assert_eq!(base64_encode(""), "");
+        // 1 char padding (len % 3 == 2) -> "ab" -> "YWI="
+        assert_eq!(base64_encode("ab"), "YWI=");
+        // 2 chars padding (len % 3 == 1) -> "a" -> "YQ=="
+        assert_eq!(base64_encode("a"), "YQ==");
+        // 0 chars padding (len % 3 == 0) -> "abc" -> "YWJj"
+        assert_eq!(base64_encode("abc"), "YWJj");
+        // Longer string
+        assert_eq!(base64_encode("hello world"), "aGVsbG8gd29ybGQ=");
+    }
+}

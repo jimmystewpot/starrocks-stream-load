@@ -649,3 +649,143 @@ async fn test_json_deserialization_failure_handling() {
         .unwrap_err();
     assert!(matches!(err, starrocks_stream_load::Error::Json(_)));
 }
+
+#[tokio::test]
+async fn test_empty_load_urls_error() {
+    let config =
+        StreamLoadConfig::builder(vec![], "test_db".to_string(), "admin".to_string()).build();
+    let props = StreamLoadTableProperties::builder().build();
+    let manager = StreamLoadManager::new(config, props).unwrap();
+
+    // Verify execute_request returns Error::Transaction when load_urls is empty
+    let err = manager.begin_transaction("label").await.unwrap_err();
+    assert!(err.to_string().contains("No configured load URLs"));
+
+    // Verify get_available_fe falls back to http://127.0.0.1:8030
+    assert_eq!(
+        manager.client().get_available_fe(),
+        "http://127.0.0.1:8030/"
+    );
+}
+
+#[tokio::test]
+async fn test_malformed_redirect_location() {
+    let mock_server = MockServer::start().await;
+    let mock_uri = mock_server.uri();
+
+    // Location header has a control character, which is invalid, or it's empty
+    Mock::given(method("PUT"))
+        .and(path("/api/test_db/test_tbl/_stream_load"))
+        .respond_with(ResponseTemplate::new(307)) // no location header
+        .mount(&mock_server)
+        .await;
+
+    let config =
+        StreamLoadConfig::builder(vec![mock_uri], "test_db".to_string(), "admin".to_string())
+            .build();
+    let props = StreamLoadTableProperties::builder()
+        .table("test_tbl")
+        .build();
+    let manager = StreamLoadManager::new(config, props).unwrap();
+
+    // It should return the 307 response directly which is a StarRocksFailure
+    let err = manager
+        .send_single_batch("label", bytes::Bytes::from("data"))
+        .await
+        .unwrap_err();
+    assert!(err.to_string().contains("307"));
+}
+
+#[tokio::test]
+async fn test_get_error_log_failures() {
+    let config = StreamLoadConfig::builder(
+        vec!["http://127.0.0.1:8030".to_string()],
+        "db".to_string(),
+        "admin".to_string(),
+    )
+    .build();
+    let props = StreamLoadTableProperties::builder().build();
+    let manager = StreamLoadManager::new(config, props).unwrap();
+
+    // Rejects non-HTTP(S) URLs
+    let err_url = manager
+        .get_error_log("ftp://some/url", false)
+        .await
+        .unwrap_err();
+    assert!(err_url.to_string().contains("Invalid error log URL"));
+
+    // 404 response
+    let mock_server = MockServer::start().await;
+    let mock_uri = mock_server.uri();
+    Mock::given(method("GET"))
+        .and(path("/not_found"))
+        .respond_with(ResponseTemplate::new(404).set_body_string("Resource not found"))
+        .mount(&mock_server)
+        .await;
+
+    let error_url = format!("{mock_uri}/not_found");
+    let err_status = manager.get_error_log(&error_url, false).await.unwrap_err();
+    assert!(err_status.to_string().contains("404"));
+}
+
+#[tokio::test]
+async fn test_all_apis_non_ok_responses() {
+    let mock_server = MockServer::start().await;
+    let mock_uri = mock_server.uri();
+
+    Mock::given(method("PUT"))
+        .respond_with(ResponseTemplate::new(500).set_body_string("Internal error PUT"))
+        .mount(&mock_server)
+        .await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(500).set_body_string("Internal error POST"))
+        .mount(&mock_server)
+        .await;
+    Mock::given(method("GET"))
+        .respond_with(ResponseTemplate::new(500).set_body_string("Internal error GET"))
+        .mount(&mock_server)
+        .await;
+
+    let config =
+        StreamLoadConfig::builder(vec![mock_uri], "db".to_string(), "admin".to_string()).build();
+    let props = StreamLoadTableProperties::builder().table("tbl").build();
+    let manager = StreamLoadManager::new(config, props).unwrap();
+
+    // 1. send_single_batch
+    let err = manager
+        .send_single_batch("label", bytes::Bytes::from("data"))
+        .await
+        .unwrap_err();
+    assert!(err.to_string().contains("500"));
+
+    // 2. begin_transaction
+    let err = manager.begin_transaction("label").await.unwrap_err();
+    assert!(err.to_string().contains("500"));
+
+    // 3. load_transaction_data
+    let err = manager
+        .load_transaction_data("label", "db", "tbl", 0, bytes::Bytes::from("data"))
+        .await
+        .unwrap_err();
+    assert!(err.to_string().contains("500"));
+
+    // 4. prepare_transaction
+    let err = manager.prepare_transaction("label").await.unwrap_err();
+    assert!(err.to_string().contains("500"));
+
+    // 5. commit_transaction
+    let err = manager.commit_transaction("label").await.unwrap_err();
+    assert!(err.to_string().contains("500"));
+
+    // 6. rollback_transaction
+    let err = manager.rollback_transaction("label").await.unwrap_err();
+    assert!(err.to_string().contains("500"));
+
+    // 7. get_load_status
+    let err = manager.get_load_status("label").await.unwrap_err();
+    assert!(err.to_string().contains("500"));
+
+    // 8. cancel_load
+    let err = manager.cancel_load("label", "db", "tbl").await.unwrap_err();
+    assert!(err.to_string().contains("500"));
+}

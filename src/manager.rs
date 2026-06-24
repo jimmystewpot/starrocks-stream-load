@@ -626,3 +626,89 @@ pub fn convert_delimiter(origin_str: &str) -> Result<String> {
         Ok(origin_str.to_string())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::{DataFormat, StreamLoadTableProperties};
+
+    #[test]
+    fn test_build_headers_all_permutations() {
+        // Test basic format headers
+        let props_csv = StreamLoadTableProperties::builder()
+            .format(DataFormat::CSV)
+            .build();
+        let hdrs_csv = build_headers(&props_csv).unwrap();
+        assert_eq!(hdrs_csv.get("format").unwrap(), "csv");
+
+        let props_json = StreamLoadTableProperties::builder()
+            .format(DataFormat::JSON)
+            .build();
+        let hdrs_json = build_headers(&props_json).unwrap();
+        assert_eq!(hdrs_json.get("format").unwrap(), "json");
+
+        let props_arrow = StreamLoadTableProperties::builder()
+            .format(DataFormat::ARROW)
+            .build();
+        let hdrs_arrow = build_headers(&props_arrow).unwrap();
+        assert_eq!(hdrs_arrow.get("format").unwrap(), "arrow");
+
+        // Test escaping of column separator and row delimiter
+        let props_delim = StreamLoadTableProperties::builder()
+            .column_separator("\t")
+            .row_delimiter("\n")
+            .build();
+        let hdrs_delim = build_headers(&props_delim).unwrap();
+        assert_eq!(hdrs_delim.get("column_separator").unwrap(), "\\t");
+        assert_eq!(hdrs_delim.get("row_delimiter").unwrap(), "\\n");
+
+        // Test other table properties
+        let props_full = StreamLoadTableProperties::builder()
+            .columns("c1,c2")
+            .jsonpaths("$.c1,$.c2")
+            .strip_outer_array(true)
+            .ignore_json_size(false)
+            .max_filter_ratio(0.12)
+            .strict_mode(true)
+            .timeout(180)
+            .compression("gzip")
+            .skip_header(2)
+            .where_clause("c1 > 0")
+            .partitions("p1,p2")
+            .negative(true)
+            .timezone("Asia/Shanghai")
+            .header("X-Custom", "Val")
+            .build();
+
+        let hdrs_full = build_headers(&props_full).unwrap();
+        assert_eq!(hdrs_full.get("columns").unwrap(), "c1,c2");
+        assert_eq!(hdrs_full.get("jsonpaths").unwrap(), "$.c1,$.c2");
+        assert_eq!(hdrs_full.get("strip_outer_array").unwrap(), "true");
+        assert_eq!(hdrs_full.get("ignore_json_size").unwrap(), "false");
+        assert_eq!(hdrs_full.get("max_filter_ratio").unwrap(), "0.12");
+        assert_eq!(hdrs_full.get("strict_mode").unwrap(), "true");
+        assert_eq!(hdrs_full.get("timeout").unwrap(), "180");
+        assert_eq!(hdrs_full.get("compression").unwrap(), "gzip");
+        assert_eq!(hdrs_full.get("skip_header").unwrap(), "2");
+        assert_eq!(hdrs_full.get("where").unwrap(), "c1 > 0");
+        assert_eq!(hdrs_full.get("partitions").unwrap(), "p1,p2");
+        assert_eq!(hdrs_full.get("negative").unwrap(), "true");
+        assert_eq!(hdrs_full.get("timezone").unwrap(), "Asia/Shanghai");
+        assert_eq!(hdrs_full.get("X-Custom").unwrap(), "Val");
+    }
+
+    #[test]
+    fn test_build_headers_invalid_custom_header() {
+        // Custom header name containing invalid character (e.g., control characters)
+        let props = StreamLoadTableProperties::builder()
+            .header("X-Header\nName", "Val")
+            .build();
+        let res = build_headers(&props);
+        assert!(res.is_err());
+        assert!(
+            res.unwrap_err()
+                .to_string()
+                .contains("Invalid custom header name")
+        );
+    }
+}
