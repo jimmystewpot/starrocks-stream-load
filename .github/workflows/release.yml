@@ -9,7 +9,7 @@ on:
       - 'v[0-9]+.[0-9]+.[0-9]+-beta*'
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   CARGO_HTTP_MULTIPLEXING: false
@@ -20,6 +20,17 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Verify tag is merged to main
+        run: |
+          if git merge-base --is-ancestor HEAD origin/main; then
+            echo "Tag is merged to main. Proceeding with release."
+          else
+            echo "Error: Tag is not merged to main branch. Skipping release."
+            exit 1
+          fi
       
       - name: Install native dependencies
         run: |
@@ -44,6 +55,8 @@ jobs:
     name: Create GitHub Release
     needs: validate
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v7
       

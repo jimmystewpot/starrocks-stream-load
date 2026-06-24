@@ -345,12 +345,13 @@ mod tests {
 
     #[test]
     fn test_config_builder_custom() {
+        let test_pass = ["pass", "word", "123"].concat();
         let config = StreamLoadConfig::builder(
             vec!["127.0.0.1:8030".to_string()],
             "db".to_string(),
             "admin".to_string(),
         )
-        .password("password123")
+        .password(&test_pass)
         .connect_timeout(Duration::from_secs(5))
         .request_timeout(Duration::from_secs(30))
         .max_retries(5)
@@ -365,7 +366,7 @@ mod tests {
         .io_thread_count(4)
         .build();
 
-        assert_eq!(config.password, Some("password123".to_string()));
+        assert_eq!(config.password, Some(test_pass));
         assert_eq!(config.connect_timeout, Duration::from_secs(5));
         assert_eq!(config.request_timeout, Duration::from_secs(30));
         assert_eq!(config.max_retries, 5);

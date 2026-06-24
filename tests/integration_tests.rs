@@ -814,8 +814,7 @@ async fn test_anonymous_authentication() {
         .await;
 
     // Config with an empty username
-    let config =
-        StreamLoadConfig::builder(vec![mock_uri], "db".to_string(), "".to_string()).build();
+    let config = StreamLoadConfig::builder(vec![mock_uri], "db".to_string(), String::new()).build();
     let props = StreamLoadTableProperties::builder().build();
     let manager = StreamLoadManager::new(config, props).unwrap();
 
