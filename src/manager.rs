@@ -61,17 +61,17 @@ impl StreamLoadManager {
             .await?;
 
         let status_code = response.status();
-        let body_str = response.text().await?;
+        let body_bytes = response.bytes().await?;
 
         if status_code != reqwest::StatusCode::OK {
             return Err(Error::StarRocksFailure {
                 status: status_code.to_string(),
-                message: body_str,
+                message: String::from_utf8_lossy(&body_bytes).into_owned(),
                 error_log_url: None,
             });
         }
 
-        let resp: StreamLoadResponse = serde_json::from_str(&body_str)?;
+        let resp: StreamLoadResponse = serde_json::from_slice(&body_bytes)?;
         if resp.status != "Success" && resp.status != "OK" && resp.status != "Publish Timeout" {
             return Err(Error::StarRocksFailure {
                 status: resp.status,
@@ -122,17 +122,17 @@ impl StreamLoadManager {
             .await?;
 
         let status_code = response.status();
-        let body_str = response.text().await?;
+        let body_bytes = response.bytes().await?;
 
         if status_code != reqwest::StatusCode::OK {
             return Err(Error::StarRocksFailure {
                 status: status_code.to_string(),
-                message: body_str,
+                message: String::from_utf8_lossy(&body_bytes).into_owned(),
                 error_log_url: None,
             });
         }
 
-        let resp: StreamLoadResponse = serde_json::from_str(&body_str)?;
+        let resp: StreamLoadResponse = serde_json::from_slice(&body_bytes)?;
         if resp.status != "OK" && resp.status != "Success" {
             return Err(Error::StarRocksFailure {
                 status: resp.status,
@@ -182,17 +182,17 @@ impl StreamLoadManager {
             .await?;
 
         let status_code = response.status();
-        let body_str = response.text().await?;
+        let body_bytes = response.bytes().await?;
 
         if status_code != reqwest::StatusCode::OK {
             return Err(Error::StarRocksFailure {
                 status: status_code.to_string(),
-                message: body_str,
+                message: String::from_utf8_lossy(&body_bytes).into_owned(),
                 error_log_url: None,
             });
         }
 
-        let resp: StreamLoadResponse = serde_json::from_str(&body_str)?;
+        let resp: StreamLoadResponse = serde_json::from_slice(&body_bytes)?;
         if resp.status != "OK" && resp.status != "Success" {
             return Err(Error::StarRocksFailure {
                 status: resp.status,
@@ -239,17 +239,17 @@ impl StreamLoadManager {
             .await?;
 
         let status_code = response.status();
-        let body_str = response.text().await?;
+        let body_bytes = response.bytes().await?;
 
         if status_code != reqwest::StatusCode::OK {
             return Err(Error::StarRocksFailure {
                 status: status_code.to_string(),
-                message: body_str,
+                message: String::from_utf8_lossy(&body_bytes).into_owned(),
                 error_log_url: None,
             });
         }
 
-        let resp: StreamLoadResponse = serde_json::from_str(&body_str)?;
+        let resp: StreamLoadResponse = serde_json::from_slice(&body_bytes)?;
         if resp.status != "OK" && resp.status != "Success" {
             return Err(Error::StarRocksFailure {
                 status: resp.status,
@@ -301,17 +301,17 @@ impl StreamLoadManager {
             .await?;
 
         let status_code = response.status();
-        let body_str = response.text().await?;
+        let body_bytes = response.bytes().await?;
 
         if status_code != reqwest::StatusCode::OK {
             return Err(Error::StarRocksFailure {
                 status: status_code.to_string(),
-                message: body_str,
+                message: String::from_utf8_lossy(&body_bytes).into_owned(),
                 error_log_url: None,
             });
         }
 
-        let resp: StreamLoadResponse = serde_json::from_str(&body_str)?;
+        let resp: StreamLoadResponse = serde_json::from_slice(&body_bytes)?;
         if resp.status != "OK" && resp.status != "Success" {
             return Err(Error::StarRocksFailure {
                 status: resp.status,
@@ -358,17 +358,17 @@ impl StreamLoadManager {
             .await?;
 
         let status_code = response.status();
-        let body_str = response.text().await?;
+        let body_bytes = response.bytes().await?;
 
         if status_code != reqwest::StatusCode::OK {
             return Err(Error::StarRocksFailure {
                 status: status_code.to_string(),
-                message: body_str,
+                message: String::from_utf8_lossy(&body_bytes).into_owned(),
                 error_log_url: None,
             });
         }
 
-        let resp: StreamLoadResponse = serde_json::from_str(&body_str)?;
+        let resp: StreamLoadResponse = serde_json::from_slice(&body_bytes)?;
         if resp.status != "OK" && resp.status != "Success" {
             return Err(Error::StarRocksFailure {
                 status: resp.status,
@@ -391,17 +391,17 @@ impl StreamLoadManager {
             .await?;
 
         let status_code = response.status();
-        let body_str = response.text().await?;
+        let body_bytes = response.bytes().await?;
 
         if status_code != reqwest::StatusCode::OK {
             return Err(Error::StarRocksFailure {
                 status: status_code.to_string(),
-                message: body_str,
+                message: String::from_utf8_lossy(&body_bytes).into_owned(),
                 error_log_url: None,
             });
         }
 
-        let resp: StreamLoadResponse = serde_json::from_str(&body_str)?;
+        let resp: StreamLoadResponse = serde_json::from_slice(&body_bytes)?;
         Ok(resp)
     }
 
@@ -420,17 +420,17 @@ impl StreamLoadManager {
             .await?;
 
         let status_code = response.status();
-        let body_str = response.text().await?;
+        let body_bytes = response.bytes().await?;
 
         if status_code != reqwest::StatusCode::OK {
             return Err(Error::StarRocksFailure {
                 status: status_code.to_string(),
-                message: body_str,
+                message: String::from_utf8_lossy(&body_bytes).into_owned(),
                 error_log_url: None,
             });
         }
 
-        let resp: StreamLoadResponse = serde_json::from_str(&body_str)?;
+        let resp: StreamLoadResponse = serde_json::from_slice(&body_bytes)?;
         Ok(resp)
     }
 
@@ -453,7 +453,11 @@ impl StreamLoadManager {
         }
 
         if body.len() > 3000 {
-            body.truncate(3000);
+            let mut new_len = 3000;
+            while !body.is_char_boundary(new_len) {
+                new_len -= 1;
+            }
+            body.truncate(new_len);
         }
 
         if sanitize {
@@ -475,17 +479,19 @@ impl StreamLoadManager {
 }
 
 fn to_header_val(name: &str, val: &str) -> Result<HeaderValue> {
-    let escaped = if (name == "row_delimiter" || name == "column_separator")
+    if (name == "row_delimiter" || name == "column_separator")
         && (val == "\n" || val == "\r" || val == "\t" || val == "\r\n")
     {
-        val.replace('\n', "\\n")
+        let escaped = val
+            .replace('\n', "\\n")
             .replace('\r', "\\r")
-            .replace('\t', "\\t")
+            .replace('\t', "\\t");
+        HeaderValue::from_str(&escaped)
+            .map_err(|e| Error::Transaction(format!("Invalid character in header '{name}': {e}")))
     } else {
-        val.to_string()
-    };
-    HeaderValue::from_str(&escaped)
-        .map_err(|e| Error::Transaction(format!("Invalid character in header '{name}': {e}")))
+        HeaderValue::from_str(val)
+            .map_err(|e| Error::Transaction(format!("Invalid character in header '{name}': {e}")))
+    }
 }
 
 #[doc(hidden)]
@@ -537,7 +543,10 @@ pub fn build_headers(props: &StreamLoadTableProperties) -> Result<reqwest::heade
         );
     }
     if let Some(timeout) = props.timeout {
-        headers.insert("timeout", to_header_val("timeout", &timeout.to_string())?);
+        headers.insert(
+            "timeout",
+            reqwest::header::HeaderValue::from(u64::from(timeout)),
+        );
     }
     if let Some(comp) = &props.compression {
         headers.insert("compression", to_header_val("compression", comp)?);
@@ -545,7 +554,7 @@ pub fn build_headers(props: &StreamLoadTableProperties) -> Result<reqwest::heade
     if let Some(skip) = props.skip_header {
         headers.insert(
             "skip_header",
-            to_header_val("skip_header", &skip.to_string())?,
+            reqwest::header::HeaderValue::from(u64::from(skip)),
         );
     }
     if let Some(wh) = &props.where_clause {

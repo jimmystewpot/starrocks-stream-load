@@ -77,13 +77,36 @@ impl fmt::Display for Error {
     }
 }
 
+fn find_case_insensitive(haystack: &str, needle: &str) -> Option<usize> {
+    let h_bytes = haystack.as_bytes();
+    let n_bytes = needle.as_bytes();
+    if n_bytes.is_empty() || h_bytes.len() < n_bytes.len() {
+        return None;
+    }
+    for i in 0..=(h_bytes.len() - n_bytes.len()) {
+        let mut matches = true;
+        for j in 0..n_bytes.len() {
+            let b1 = h_bytes[i + j];
+            let b2 = n_bytes[j];
+            if !b1.eq_ignore_ascii_case(&b2) {
+                matches = false;
+                break;
+            }
+        }
+        if matches {
+            return Some(i);
+        }
+    }
+    None
+}
+
 #[must_use]
 pub fn redact_sensitive_info(input: &str) -> String {
     let mut output = input.to_string();
 
     // 1. Redact Basic Auth header tokens: "Basic <token>"
     // Find "Basic " (case-insensitive) and replace the subsequent base64 characters
-    if let Some(idx) = output.to_lowercase().find("basic ") {
+    if let Some(idx) = find_case_insensitive(&output, "basic ") {
         let start = idx + 6;
         let mut end = start;
         let bytes = output.as_bytes();
@@ -103,24 +126,25 @@ pub fn redact_sensitive_info(input: &str) -> String {
     // 2. Redact passwords in URL-like strings: e.g. "password=something" or "passwd=something"
     for word in &["password=", "passwd=", "pass="] {
         let mut start_search = 0;
-        while let Some(idx) = output[start_search..].to_lowercase().find(word) {
-            let actual_idx = start_search + idx;
-            let val_start = actual_idx + word.len();
-            let mut val_end = val_start;
-            let bytes = output.as_bytes();
-            while val_end < bytes.len()
-                && bytes[val_end] != b'&'
-                && bytes[val_end] != b' '
-                && bytes[val_end] != b'\n'
-                && bytes[val_end] != b','
-            {
-                val_end += 1;
-            }
-            if val_end > val_start {
-                output.replace_range(val_start..val_end, "***");
-            }
-            start_search = val_start + 3; // move past the "***"
-            if start_search >= output.len() {
+        while start_search < output.len() {
+            if let Some(idx) = find_case_insensitive(&output[start_search..], word) {
+                let actual_idx = start_search + idx;
+                let val_start = actual_idx + word.len();
+                let mut val_end = val_start;
+                let bytes = output.as_bytes();
+                while val_end < bytes.len()
+                    && bytes[val_end] != b'&'
+                    && bytes[val_end] != b' '
+                    && bytes[val_end] != b'\n'
+                    && bytes[val_end] != b','
+                {
+                    val_end += 1;
+                }
+                if val_end > val_start {
+                    output.replace_range(val_start..val_end, "***");
+                }
+                start_search = val_start + 3; // move past the "***"
+            } else {
                 break;
             }
         }

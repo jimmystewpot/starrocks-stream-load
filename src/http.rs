@@ -11,6 +11,7 @@ pub struct StarRocksHttpClient {
     config: StreamLoadConfig,
     current_pos: AtomicUsize,
     auth_header: Option<HeaderValue>,
+    parsed_urls: Vec<Url>,
 }
 
 impl StarRocksHttpClient {
@@ -37,11 +38,25 @@ impl StarRocksHttpClient {
             None
         };
 
+        let parsed_urls = config
+            .load_urls
+            .iter()
+            .map(|raw_url| {
+                let url_str = if raw_url.contains("://") {
+                    raw_url.clone()
+                } else {
+                    format!("http://{raw_url}")
+                };
+                Url::parse(&url_str)
+            })
+            .collect::<std::result::Result<Vec<Url>, url::ParseError>>()?;
+
         Ok(Self {
             client,
             config,
             current_pos: AtomicUsize::new(0),
             auth_header,
+            parsed_urls,
         })
     }
 
@@ -51,20 +66,19 @@ impl StarRocksHttpClient {
     }
 
     pub fn get_available_fe(&self) -> String {
-        let urls = &self.config.load_urls;
+        self.get_available_fe_url().to_string()
+    }
+
+    pub fn get_available_fe_url(&self) -> &Url {
+        let urls = &self.parsed_urls;
         if urls.is_empty() {
-            return String::new();
+            static DEFAULT_URL: std::sync::OnceLock<Url> = std::sync::OnceLock::new();
+            return DEFAULT_URL.get_or_init(|| Url::parse("http://127.0.0.1:8030").unwrap());
         }
 
         let size = urls.len();
         let pos = self.current_pos.load(Ordering::Relaxed) % size;
-        let raw_url = &urls[pos];
-
-        if raw_url.contains("://") {
-            raw_url.clone()
-        } else {
-            format!("http://{raw_url}")
-        }
+        &urls[pos]
     }
 
     pub async fn execute_request(
@@ -74,8 +88,7 @@ impl StarRocksHttpClient {
         mut headers: HeaderMap,
         body: Option<bytes::Bytes>,
     ) -> Result<Response> {
-        let urls = &self.config.load_urls;
-        if urls.is_empty() {
+        if self.parsed_urls.is_empty() {
             return Err(Error::Transaction("No configured load URLs".to_string()));
         }
 
@@ -89,8 +102,8 @@ impl StarRocksHttpClient {
         let max_attempts = self.config.max_retries + 1;
 
         for attempt in 1..=max_attempts {
-            let fe = self.get_available_fe();
-            let mut url = Url::parse(&fe)?.join(path)?;
+            let fe_url = self.get_available_fe_url();
+            let mut url = fe_url.join(path)?;
 
             let mut builder = self
                 .client
@@ -146,7 +159,10 @@ impl StarRocksHttpClient {
 
             if attempt < max_attempts {
                 tracing::warn!(
-                    "Request to FE {fe} failed (attempt {attempt}/{max_attempts}): {:?}. Retrying in {:?}",
+                    "Request to FE {} failed (attempt {}/{}): {:?}. Retrying in {:?}",
+                    fe_url,
+                    attempt,
+                    max_attempts,
                     last_err,
                     self.config.retry_interval
                 );
@@ -160,7 +176,11 @@ impl StarRocksHttpClient {
     }
 
     pub async fn get_request(&self, url: &str) -> Result<Response> {
-        let response = self.client.get(url).send().await?;
+        let mut builder = self.client.get(url);
+        if let Some(ref auth) = self.auth_header {
+            builder = builder.header(AUTHORIZATION, auth.clone());
+        }
+        let response = builder.send().await?;
         Ok(response)
     }
 }
@@ -168,8 +188,8 @@ impl StarRocksHttpClient {
 #[must_use]
 fn base64_encode(input: &str) -> String {
     const CHARSET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut result = String::new();
     let bytes = input.as_bytes();
+    let mut result = String::with_capacity(bytes.len().div_ceil(3) * 4);
     let mut i = 0;
 
     while i < bytes.len() {
