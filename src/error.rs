@@ -126,16 +126,26 @@ pub fn redact_sensitive_info(input: &str) -> String {
         }
     }
 
-    // 3. Redact credentials in inline URL format: e.g., "http://user:pass@host"
-    if let Some(proto_idx) = output.find("://") {
+    // 3. Redact credentials in all inline URLs: e.g., "http://user:pass@host"
+    let mut start_idx = 0;
+    while let Some(proto_offset) = output[start_idx..].find("://") {
+        let proto_idx = start_idx + proto_offset;
         let auth_start = proto_idx + 3;
-        if let Some(at_idx) = output[auth_start..].find('@') {
-            let actual_at_idx = auth_start + at_idx;
-            if let Some(colon_idx) = output[auth_start..actual_at_idx].find(':') {
-                let pass_start = auth_start + colon_idx + 1;
-                output.replace_range(pass_start..actual_at_idx, "***");
+        if let Some(at_offset) = output[auth_start..].find('@') {
+            let actual_at_idx = auth_start + at_offset;
+            // Ensure we don't scan past space/newline boundaries or path boundaries (e.g. '/')
+            let chunk = &output[auth_start..actual_at_idx];
+            if !chunk.contains(' ') && !chunk.contains('\n') && !chunk.contains('/') {
+                if let Some(colon_offset) = chunk.find(':') {
+                    let pass_start = auth_start + colon_offset + 1;
+                    output.replace_range(pass_start..actual_at_idx, "***");
+                    // Update start_idx past the modified region
+                    start_idx = pass_start + 3; // length of "***"
+                    continue;
+                }
             }
         }
+        start_idx = auth_start;
     }
 
     output

@@ -13,6 +13,15 @@ fn test_log_redaction() {
     assert!(!redacted.contains("secret_pass"));
     assert!(!redacted.contains("YWRtaW46c2VjcmV0X3Bhc3M="));
     assert!(redacted.contains("password=***"));
+
+    // Test multiple inline URLs
+    let multi_url_err =
+        "failed connecting to http://user1:pass1@host1:8030 and http://user2:pass2@host2:8030";
+    let multi_redacted = redact_sensitive_info(multi_url_err);
+    assert!(!multi_redacted.contains("pass1"));
+    assert!(!multi_redacted.contains("pass2"));
+    assert!(multi_redacted.contains("http://user1:***@host1:8030"));
+    assert!(multi_redacted.contains("http://user2:***@host2:8030"));
 }
 
 #[tokio::test]
