@@ -33,9 +33,9 @@ graph TD
 ### Module Responsibilities:
 - **`src/config.rs`**: Builder types representing table properties and client settings. Silent allowances for typical builder candidates are structured at the crate root.
 - **`src/types.rs`**: Strictly typed deserializers for StarRocks HTTP responses. Captures transaction metadata, loaded row counts, and error log locations.
-- **`src/error.rs`**: Crate error aggregation. Handles sensitive string redacting (`redact_sensitive_info`) which automatically removes user authentication details.
+- **`src/error.rs`**: Crate error aggregation. Handles sensitive string redacting (`redact_sensitive_info`), error log sanitization (`sanitize_error_log`), and abort tracking URL extraction (`try_get_error_log_url_from_txn_abort_reason`).
 - **`src/http.rs`**: Core network communication layer. Controls active node polling, round-robin frontend address rotation, and custom HTTP 307 interception.
-- **`src/manager.rs`**: High-level transaction orchestration. Manages Direct Load (V1 API) and 2PC Transaction Load (V2 API).
+- **`src/manager.rs`**: High-level transaction orchestration. Manages Direct Load (V1 API), 2PC Transaction Load (V2 API), delimiter conversion, and transactional error log extraction.
 
 ---
 

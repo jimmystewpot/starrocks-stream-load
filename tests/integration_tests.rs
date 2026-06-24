@@ -352,3 +352,173 @@ async fn test_v2_transaction_error_handling() {
         .unwrap_err();
     assert!(err.to_string().contains("LABEL_ALREADY_EXISTS"));
 }
+
+#[tokio::test]
+async fn test_header_validation_failure() {
+    let config = StreamLoadConfig::builder(
+        vec!["http://127.0.0.1:8030".to_string()],
+        "test_db".to_string(),
+        "admin".to_string(),
+    )
+    .password("password")
+    .build();
+
+    // Header values cannot contain control characters like newlines
+    let props = StreamLoadTableProperties::builder()
+        .column_separator("val\nwith\nnewlines")
+        .build();
+
+    let manager = StreamLoadManager::new(config, props).unwrap();
+    let err = manager
+        .send_single_batch("label_abc", bytes::Bytes::from("data"))
+        .await
+        .unwrap_err();
+
+    assert!(err.to_string().contains("Invalid character in header"));
+}
+
+#[test]
+fn test_delimiter_conversion() {
+    use starrocks_stream_load::convert_delimiter;
+    assert_eq!(convert_delimiter("\\x01").unwrap(), "\u{1}");
+    assert_eq!(convert_delimiter("0x01").unwrap(), "\u{1}");
+    assert_eq!(convert_delimiter("\\x0a").unwrap(), "\n");
+    assert_eq!(convert_delimiter("\\x0A").unwrap(), "\n");
+    assert_eq!(convert_delimiter("abc").unwrap(), "abc");
+
+    // Errors
+    assert!(convert_delimiter("").is_err());
+    assert!(convert_delimiter("\\x").is_err());
+    assert!(convert_delimiter("\\x1").is_err());
+    assert!(convert_delimiter("\\xzz").is_err());
+}
+
+#[test]
+fn test_error_log_url_extraction() {
+    use starrocks_stream_load::try_get_error_log_url_from_txn_abort_reason;
+
+    let aborted_reason_35 = "There is data quality issue, please check the tracking url for details. Max filter ratio: 0.0. \
+                             The tracking url: http://127.0.0.1:8040/api/_load_error_log?file=error_log_19bbc3f6ae0754f_932e963c5ec44399";
+    let aborted_reason_40 = "There is a data quality issue. Please check the tracking URL or SQL for details. \
+                             Tracking URL: http://127.0.0.1:8040/api/_load_error_log?file=error_log_19bbc3f6ae0754f_932e963c5ec44399. \
+                             Tracking SQL: SELECT tracking_log FROM information_schema.load_tracking_logs WHERE JOB_ID=12345";
+    let expected =
+        "http://127.0.0.1:8040/api/_load_error_log?file=error_log_19bbc3f6ae0754f_932e963c5ec44399";
+
+    assert_eq!(
+        try_get_error_log_url_from_txn_abort_reason(aborted_reason_35).unwrap(),
+        expected
+    );
+    assert_eq!(
+        try_get_error_log_url_from_txn_abort_reason(aborted_reason_40).unwrap(),
+        expected
+    );
+    assert_eq!(try_get_error_log_url_from_txn_abort_reason("no url"), None);
+}
+
+#[test]
+fn test_error_log_sanitization() {
+    use starrocks_stream_load::sanitize_error_log;
+
+    // Empty handling
+    assert_eq!(sanitize_error_log(""), "");
+    assert_eq!(sanitize_error_log("   "), "   ");
+
+    // Basic Column Values Redaction
+    let input_1 =
+        "Value ''secret_stuff'' invalid format\nValue 'more_secrets'\nValue \"even_more\" too long";
+    let expected_1 = "column value invalid format\ncolumn value\ncolumn value too long";
+    assert_eq!(sanitize_error_log(input_1), expected_1);
+
+    // Row Redaction
+    let input_2 =
+        "Row: [123, \"secret_row_val\", true]\nRow: {\"field\": \"secret\"}\nRow: general data";
+    let expected_2 = "Data validation errors detected. Row data has been redacted for security.";
+    assert_eq!(sanitize_error_log(input_2), expected_2);
+
+    // Real world scenario with mixture of metadata and row details
+    let input_3 = "Error parsing line 10\nValue 'user_pwd' is not valid for type INT\nRow: [10, \"user_pwd\", \"admin\"]\nError parsing line 11";
+    let expected_3 =
+        "Error parsing line 10\ncolumn value is not valid for type INT\nError parsing line 11";
+    assert_eq!(sanitize_error_log(input_3), expected_3);
+}
+
+#[test]
+fn test_response_timing_deserialization() {
+    use starrocks_stream_load::StreamLoadResponse;
+
+    let json_data = r#"{
+        "TxnId": 22736752,
+        "Label": "119d4ca5-a920-4dbb-84ad-64e062a449c5",
+        "Status": "Success",
+        "Message": "OK",
+        "NumberTotalRows": 93,
+        "NumberLoadedRows": 93,
+        "NumberFilteredRows": 0,
+        "NumberUnselectedRows": 0,
+        "LoadBytes": 17227,
+        "LoadTimeMs": 17575,
+        "BeginTxnTimeMs": 12,
+        "StreamLoadPlanTimeMs": 1,
+        "ReadDataTimeMs": 34,
+        "WriteDataTimeMs": 17487,
+        "CommitAndPublishTimeMs": 86
+    }"#;
+
+    let resp: StreamLoadResponse = serde_json::from_str(json_data).unwrap();
+    assert_eq!(resp.txn_id, Some(22_736_752));
+    assert_eq!(resp.status, "Success");
+    assert_eq!(resp.begin_txn_time_ms, Some(12));
+    assert_eq!(resp.stream_load_plan_time_ms, Some(1));
+    assert_eq!(resp.read_data_time_ms, Some(34));
+    assert_eq!(resp.write_data_time_ms, Some(17487));
+    assert_eq!(resp.commit_and_publish_time_ms, Some(86));
+}
+
+#[tokio::test]
+async fn test_error_log_fetch_and_redaction() {
+    use starrocks_stream_load::{StreamLoadConfig, StreamLoadManager, StreamLoadTableProperties};
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    let mock_server = MockServer::start().await;
+    let mock_uri = mock_server.uri();
+
+    let raw_error_log = "Error parsing row\nValue 'super_secret'\nRow: [123, \"secret\"]";
+    let sanitized_expected = "Error parsing row\ncolumn value";
+
+    Mock::given(method("GET"))
+        .and(path("/api/_load_error_log"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(raw_error_log))
+        .mount(&mock_server)
+        .await;
+
+    let config = StreamLoadConfig::builder(
+        vec![mock_uri.clone()],
+        "test_db".to_string(),
+        "admin".to_string(),
+    )
+    .password("password")
+    .build();
+
+    let props = StreamLoadTableProperties::builder().build();
+    let manager = StreamLoadManager::new(config, props).unwrap();
+
+    let error_url = format!("{mock_uri}/api/_load_error_log?file=error_log_123");
+
+    // Test fetch without sanitization
+    let fetched_raw = manager.get_error_log(&error_url, false).await.unwrap();
+    assert_eq!(fetched_raw, raw_error_log);
+
+    // Test fetch with sanitization
+    let fetched_sanitized = manager.get_error_log(&error_url, true).await.unwrap();
+    assert_eq!(fetched_sanitized, sanitized_expected);
+
+    // Test get error log for merge commit using abort reason parsing
+    let abort_reason = format!("Tracking URL: {error_url}");
+    let fetched_via_abort = manager
+        .try_get_error_log_for_merge_commit(&abort_reason, true)
+        .await
+        .unwrap();
+    assert_eq!(fetched_via_abort, sanitized_expected);
+}

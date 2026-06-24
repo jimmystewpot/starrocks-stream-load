@@ -28,7 +28,7 @@ fn bench_build_headers(c: &mut Criterion) {
         .build();
 
     c.bench_function("build_headers", |b| {
-        b.iter(|| build_headers(&props));
+        b.iter(|| build_headers(&props).unwrap());
     });
 }
 

@@ -19,7 +19,10 @@ pub use config::{
     DataFormat, StreamLoadConfig, StreamLoadConfigBuilder, StreamLoadTableProperties,
     StreamLoadTablePropertiesBuilder,
 };
-pub use error::{Error, Result, redact_sensitive_info};
+pub use error::{
+    Error, Result, redact_sensitive_info, sanitize_error_log,
+    try_get_error_log_url_from_txn_abort_reason,
+};
 pub use http::StarRocksHttpClient;
-pub use manager::{StreamLoadManager, build_headers};
+pub use manager::{StreamLoadManager, build_headers, convert_delimiter};
 pub use types::StreamLoadResponse;

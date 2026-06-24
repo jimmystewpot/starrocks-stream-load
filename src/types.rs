@@ -40,4 +40,19 @@ pub struct StreamLoadResponse {
 
     #[serde(alias = "ExistingJobStatus", alias = "existing_job_status")]
     pub existing_job_status: Option<String>,
+
+    #[serde(alias = "BeginTxnTimeMs", alias = "begin_txn_time_ms")]
+    pub begin_txn_time_ms: Option<i64>,
+
+    #[serde(alias = "StreamLoadPlanTimeMs", alias = "stream_load_plan_time_ms")]
+    pub stream_load_plan_time_ms: Option<i64>,
+
+    #[serde(alias = "ReadDataTimeMs", alias = "read_data_time_ms")]
+    pub read_data_time_ms: Option<i64>,
+
+    #[serde(alias = "WriteDataTimeMs", alias = "write_data_time_ms")]
+    pub write_data_time_ms: Option<i64>,
+
+    #[serde(alias = "CommitAndPublishTimeMs", alias = "commit_and_publish_time_ms")]
+    pub commit_and_publish_time_ms: Option<i64>,
 }

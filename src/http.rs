@@ -158,6 +158,11 @@ impl StarRocksHttpClient {
             Error::Transaction("HTTP request failed after max retries".to_string())
         }))
     }
+
+    pub async fn get_request(&self, url: &str) -> Result<Response> {
+        let response = self.client.get(url).send().await?;
+        Ok(response)
+    }
 }
 
 #[must_use]

@@ -150,3 +150,122 @@ pub fn redact_sensitive_info(input: &str) -> String {
 
     output
 }
+
+#[must_use]
+pub fn sanitize_error_log(error_log: &str) -> String {
+    if error_log.is_empty() || error_log.trim().is_empty() {
+        return error_log.to_string();
+    }
+
+    let normalized = error_log.replace("\r\n", "\n").replace('\r', "\n");
+    let lines = normalized.split('\n');
+    let mut sanitized = String::new();
+
+    for line in lines {
+        if line.trim().is_empty() {
+            continue;
+        }
+
+        let mut sanitized_line = line.to_string();
+
+        // 1. Sanitize column values in all lines
+        while let Some(start_idx) = sanitized_line.find("Value ''") {
+            let rest = &sanitized_line[start_idx + 8..];
+            if let Some(end_offset) = rest.find("''") {
+                let end_idx = start_idx + 8 + end_offset + 2;
+                sanitized_line.replace_range(start_idx..end_idx, "column value");
+            } else {
+                break;
+            }
+        }
+
+        while let Some(start_idx) = sanitized_line.find("Value '") {
+            let rest = &sanitized_line[start_idx + 7..];
+            if let Some(end_offset) = rest.find('\'') {
+                let end_idx = start_idx + 7 + end_offset + 1;
+                sanitized_line.replace_range(start_idx..end_idx, "column value");
+            } else {
+                break;
+            }
+        }
+
+        while let Some(start_idx) = sanitized_line.find("Value \"") {
+            let rest = &sanitized_line[start_idx + 7..];
+            if let Some(end_offset) = rest.find('"') {
+                let end_idx = start_idx + 7 + end_offset + 1;
+                sanitized_line.replace_range(start_idx..end_idx, "column value");
+            } else {
+                break;
+            }
+        }
+
+        // 2. If line contains "Row:", remove the row data and everything after it
+        if let Some(row_idx) = sanitized_line.find("Row:") {
+            sanitized_line.truncate(row_idx);
+        }
+
+        if !sanitized_line.trim().is_empty() {
+            sanitized.push_str(&sanitized_line);
+            sanitized.push('\n');
+        }
+    }
+
+    let result = sanitized.trim().to_string();
+    if result.is_empty() {
+        "Data validation errors detected. Row data has been redacted for security.".to_string()
+    } else {
+        result
+    }
+}
+
+#[must_use]
+pub fn try_get_error_log_url_from_txn_abort_reason(abort_reason: &str) -> Option<String> {
+    let lower = abort_reason.to_lowercase();
+    if let Some(idx) = lower.find("tracking url:") {
+        let start_pos = idx + "tracking url:".len();
+        let remaining = &abort_reason[start_pos..];
+
+        // Skip leading whitespace
+        let mut url_start = 0;
+        let bytes = remaining.as_bytes();
+        while url_start < bytes.len()
+            && (bytes[url_start] == b' '
+                || bytes[url_start] == b'\t'
+                || bytes[url_start] == b'\r'
+                || bytes[url_start] == b'\n')
+        {
+            url_start += 1;
+        }
+
+        if url_start < bytes.len() {
+            let url_part = &remaining[url_start..];
+            // Find end of URL (space, newline, or dot/comma followed by space/newline/end of string)
+            let mut url_end = 0;
+            let url_bytes = url_part.as_bytes();
+            while url_end < url_bytes.len() {
+                let c = url_bytes[url_end];
+                if c == b' ' || c == b'\t' || c == b'\r' || c == b'\n' {
+                    break;
+                }
+                if (c == b'.' || c == b',')
+                    && (url_end + 1 == url_bytes.len()
+                        || url_bytes[url_end + 1] == b' '
+                        || url_bytes[url_end + 1] == b'\t'
+                        || url_bytes[url_end + 1] == b'\r'
+                        || url_bytes[url_end + 1] == b'\n')
+                {
+                    break;
+                }
+                url_end += 1;
+            }
+            let url = &url_part[..url_end];
+            let url_lower = url.to_lowercase();
+            if (url_lower.starts_with("http://") || url_lower.starts_with("https://"))
+                && url_lower.contains("/api/_load_error_log?file=error_log_")
+            {
+                return Some(url.to_string());
+            }
+        }
+    }
+    None
+}

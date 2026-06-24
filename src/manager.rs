@@ -47,7 +47,7 @@ impl StreamLoadManager {
         let table = self.default_table();
         let path = format!("/api/{db}/{table}/_stream_load");
 
-        let mut headers = build_headers(&self.properties);
+        let mut headers = build_headers(&self.properties)?;
         headers.insert(EXPECT, HeaderValue::from_static("100-continue"));
         headers.insert(
             "label",
@@ -157,7 +157,7 @@ impl StreamLoadManager {
     ) -> Result<StreamLoadResponse> {
         let path = "/api/transaction/load";
 
-        let mut headers = build_headers(&self.properties);
+        let mut headers = build_headers(&self.properties)?;
         headers.insert(EXPECT, HeaderValue::from_static("100-continue"));
         headers.insert(
             "label",
@@ -433,10 +433,54 @@ impl StreamLoadManager {
         let resp: StreamLoadResponse = serde_json::from_str(&body_str)?;
         Ok(resp)
     }
+
+    /// Fetch the error log from the given URL. If sanitize is true, it will redact sensitive row/column details.
+    pub async fn get_error_log(&self, error_url: &str, sanitize: bool) -> Result<String> {
+        if !error_url.starts_with("http://") && !error_url.starts_with("https://") {
+            return Err(Error::Transaction("Invalid error log URL".to_string()));
+        }
+
+        let response = self.http_client.get_request(error_url).await?;
+        let status = response.status();
+        let mut body = response.text().await?;
+
+        if status != reqwest::StatusCode::OK {
+            return Err(Error::StarRocksFailure {
+                status: status.to_string(),
+                message: body,
+                error_log_url: None,
+            });
+        }
+
+        if body.len() > 3000 {
+            body.truncate(3000);
+        }
+
+        if sanitize {
+            Ok(crate::error::sanitize_error_log(&body))
+        } else {
+            Ok(body)
+        }
+    }
+
+    /// Try to parse error log URL from txn abort reason, fetch it, and optionally sanitize it.
+    pub async fn try_get_error_log_for_merge_commit(
+        &self,
+        txn_abort_reason: &str,
+        sanitize: bool,
+    ) -> Option<String> {
+        let url = crate::error::try_get_error_log_url_from_txn_abort_reason(txn_abort_reason)?;
+        self.get_error_log(&url, sanitize).await.ok()
+    }
+}
+
+fn to_header_val(name: &str, val: &str) -> Result<HeaderValue> {
+    HeaderValue::from_str(val)
+        .map_err(|e| Error::Transaction(format!("Invalid character in header '{name}': {e}")))
 }
 
 #[doc(hidden)]
-pub fn build_headers(props: &StreamLoadTableProperties) -> reqwest::header::HeaderMap {
+pub fn build_headers(props: &StreamLoadTableProperties) -> Result<reqwest::header::HeaderMap> {
     let mut headers = reqwest::header::HeaderMap::new();
 
     if let Some(format) = &props.format {
@@ -447,33 +491,17 @@ pub fn build_headers(props: &StreamLoadTableProperties) -> reqwest::header::Head
         };
         headers.insert("format", reqwest::header::HeaderValue::from_static(fmt_str));
     }
-    if let Some(val) = props
-        .column_separator
-        .as_ref()
-        .and_then(|sep| reqwest::header::HeaderValue::from_str(sep).ok())
-    {
-        headers.insert("column_separator", val);
+    if let Some(sep) = &props.column_separator {
+        headers.insert("column_separator", to_header_val("column_separator", sep)?);
     }
-    if let Some(val) = props
-        .row_delimiter
-        .as_ref()
-        .and_then(|delim| reqwest::header::HeaderValue::from_str(delim).ok())
-    {
-        headers.insert("row_delimiter", val);
+    if let Some(delim) = &props.row_delimiter {
+        headers.insert("row_delimiter", to_header_val("row_delimiter", delim)?);
     }
-    if let Some(val) = props
-        .columns
-        .as_ref()
-        .and_then(|cols| reqwest::header::HeaderValue::from_str(cols).ok())
-    {
-        headers.insert("columns", val);
+    if let Some(cols) = &props.columns {
+        headers.insert("columns", to_header_val("columns", cols)?);
     }
-    if let Some(val) = props
-        .jsonpaths
-        .as_ref()
-        .and_then(|paths| reqwest::header::HeaderValue::from_str(paths).ok())
-    {
-        headers.insert("jsonpaths", val);
+    if let Some(paths) = &props.jsonpaths {
+        headers.insert("jsonpaths", to_header_val("jsonpaths", paths)?);
     }
     if let Some(strip) = props.strip_outer_array {
         headers.insert(
@@ -487,11 +515,11 @@ pub fn build_headers(props: &StreamLoadTableProperties) -> reqwest::header::Head
             reqwest::header::HeaderValue::from_static(if ignore { "true" } else { "false" }),
         );
     }
-    if let Some(val) = props
-        .max_filter_ratio
-        .and_then(|ratio| reqwest::header::HeaderValue::from_str(&ratio.to_string()).ok())
-    {
-        headers.insert("max_filter_ratio", val);
+    if let Some(ratio) = props.max_filter_ratio {
+        headers.insert(
+            "max_filter_ratio",
+            to_header_val("max_filter_ratio", &ratio.to_string())?,
+        );
     }
     if let Some(strict) = props.strict_mode {
         headers.insert(
@@ -499,38 +527,23 @@ pub fn build_headers(props: &StreamLoadTableProperties) -> reqwest::header::Head
             reqwest::header::HeaderValue::from_static(if strict { "true" } else { "false" }),
         );
     }
-    if let Some(val) = props
-        .timeout
-        .and_then(|timeout| reqwest::header::HeaderValue::from_str(&timeout.to_string()).ok())
-    {
-        headers.insert("timeout", val);
+    if let Some(timeout) = props.timeout {
+        headers.insert("timeout", to_header_val("timeout", &timeout.to_string())?);
     }
-    if let Some(val) = props
-        .compression
-        .as_ref()
-        .and_then(|comp| reqwest::header::HeaderValue::from_str(comp).ok())
-    {
-        headers.insert("compression", val);
+    if let Some(comp) = &props.compression {
+        headers.insert("compression", to_header_val("compression", comp)?);
     }
-    if let Some(val) = props
-        .skip_header
-        .and_then(|skip| reqwest::header::HeaderValue::from_str(&skip.to_string()).ok())
-    {
-        headers.insert("skip_header", val);
+    if let Some(skip) = props.skip_header {
+        headers.insert(
+            "skip_header",
+            to_header_val("skip_header", &skip.to_string())?,
+        );
     }
-    if let Some(val) = props
-        .where_clause
-        .as_ref()
-        .and_then(|wh| reqwest::header::HeaderValue::from_str(wh).ok())
-    {
-        headers.insert("where", val);
+    if let Some(wh) = &props.where_clause {
+        headers.insert("where", to_header_val("where", wh)?);
     }
-    if let Some(val) = props
-        .partitions
-        .as_ref()
-        .and_then(|parts| reqwest::header::HeaderValue::from_str(parts).ok())
-    {
-        headers.insert("partitions", val);
+    if let Some(parts) = &props.partitions {
+        headers.insert("partitions", to_header_val("partitions", parts)?);
     }
     if let Some(neg) = props.negative {
         headers.insert(
@@ -538,21 +551,61 @@ pub fn build_headers(props: &StreamLoadTableProperties) -> reqwest::header::Head
             reqwest::header::HeaderValue::from_static(if neg { "true" } else { "false" }),
         );
     }
-    if let Some(val) = props
-        .timezone
-        .as_ref()
-        .and_then(|tz| reqwest::header::HeaderValue::from_str(tz).ok())
-    {
-        headers.insert("timezone", val);
+    if let Some(tz) = &props.timezone {
+        headers.insert("timezone", to_header_val("timezone", tz)?);
     }
     for (k, v) in &props.custom_headers {
-        if let (Ok(key), Ok(val)) = (
-            reqwest::header::HeaderName::from_bytes(k.as_bytes()),
-            reqwest::header::HeaderValue::from_str(v),
-        ) {
-            headers.insert(key, val);
-        }
+        let key = reqwest::header::HeaderName::from_bytes(k.as_bytes()).map_err(|e| {
+            Error::Transaction(format!("Invalid custom header name '{k}': {e}"))
+        })?;
+        let val = to_header_val(k, v)?;
+        headers.insert(key, val);
     }
 
-    headers
+    Ok(headers)
+}
+
+pub fn convert_delimiter(origin_str: &str) -> Result<String> {
+    if origin_str.is_empty() {
+        return Err(Error::Transaction(
+            "The delimiter can't be null or empty".to_string(),
+        ));
+    }
+
+    let upper = origin_str.to_uppercase();
+    if upper.starts_with("\\X") || upper.starts_with("0X") {
+        let hex_str = &origin_str[2..];
+        if hex_str.is_empty() {
+            return Err(Error::Transaction(format!(
+                "Invalid delimiter '{origin_str}': empty hex string"
+            )));
+        }
+        if !hex_str.len().is_multiple_of(2) {
+            return Err(Error::Transaction(format!(
+                "Invalid delimiter '{origin_str}': hex length must be a even number"
+            )));
+        }
+
+        let mut bytes = Vec::new();
+        let mut chars = hex_str.chars();
+        while let (Some(c1), Some(c2)) = (chars.next(), chars.next()) {
+            let h1 = c1.to_digit(16).ok_or_else(|| {
+                Error::Transaction(format!(
+                    "Invalid delimiter '{origin_str}': invalid hex format"
+                ))
+            })?;
+            let h2 = c2.to_digit(16).ok_or_else(|| {
+                Error::Transaction(format!(
+                    "Invalid delimiter '{origin_str}': invalid hex format"
+                ))
+            })?;
+            #[allow(clippy::cast_possible_truncation)]
+            bytes.push((h1 << 4 | h2) as u8);
+        }
+
+        let s: String = bytes.into_iter().map(|b| b as char).collect();
+        Ok(s)
+    } else {
+        Ok(origin_str.to_string())
+    }
 }
