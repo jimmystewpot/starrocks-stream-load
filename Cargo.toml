@@ -1,0 +1,35 @@
+[package]
+name = "starrocks-stream-load"
+description = "StarRocks Stream Load SDK for Rust."
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+repository = "https://github.com/jimmystewpot/starrocks-stream-load"
+keywords = ["starrocks", "stream-load", "sdk", "http"]
+categories = ["database", "driver", "api-bindings", "data-formats"]
+
+[dependencies]
+tokio = { version = "1.52.3", features = ["full"] }
+reqwest = { version = "0.13.4", features = ["json", "stream"] }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.138"
+bytes = "1.12.0"
+thiserror = "2.0.18"
+tracing = "0.1.41"
+url = "2.5.4"
+
+[dev-dependencies]
+wiremock = "0.6.5"
+criterion = { version = "0.8.2", features = ["async_tokio"] }
+
+[[bench]]
+name = "load_bench"
+harness = false
+
+[profile.release]
+lto = "thin"
+debug = true
+
+[profile.dist]
+inherits = "release"
+lto = "thin"

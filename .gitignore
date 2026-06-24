@@ -1,0 +1,14 @@
+# Dependencies
+/target
+/.cargo
+
+
+# Editor files
+/.idea
+.vscode
+
+# OS generated files
+.DS_Store
+
+# Temp files
+*.tmp
