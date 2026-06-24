@@ -16,7 +16,7 @@ env:
 
 jobs:
   validate:
-    name: Validate and Build
+    name: ✅ Validate and Build
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
