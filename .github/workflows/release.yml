@@ -74,5 +74,14 @@ jobs:
 
       - name: Publish to crates.io
         env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        run: cargo publish --token "$CARGO_REGISTRY_TOKEN"
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN || secrets.CRATES_IO_TOKEN }}
+        run: |
+          if [ -z "$CARGO_REGISTRY_TOKEN" ]; then
+            echo "=== ERROR: MISSING CRATES.IO TOKEN ==="
+            echo "The GitHub secrets 'CARGO_REGISTRY_TOKEN' or 'CRATES_IO_TOKEN' are not configured."
+            echo "Please go to your repository settings (Settings > Secrets and variables > Actions)"
+            echo "and create a repository secret with your crates.io API token."
+            exit 1
+          fi
+          cargo publish --token "$CARGO_REGISTRY_TOKEN"
+
