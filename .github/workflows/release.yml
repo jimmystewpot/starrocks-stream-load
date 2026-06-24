@@ -9,14 +9,37 @@ on:
       - 'v[0-9]+.[0-9]+.[0-9]+-beta*'
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   CARGO_HTTP_MULTIPLEXING: false
 
 jobs:
+  check-tag:
+    name: Check Tag Branch
+    runs-on: ubuntu-24.04
+    outputs:
+      is_merged: ${{ steps.check.outputs.is_merged }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Verify tag is merged to main
+        id: check
+        run: |
+          if git merge-base --is-ancestor HEAD origin/main; then
+            echo "Tag is merged to main. Proceeding with release."
+            echo "is_merged=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Tag is not merged to main branch. Skipping release."
+            echo "is_merged=false" >> "$GITHUB_OUTPUT"
+          fi
+
   validate:
     name: ✅ Validate and Build
+    needs: check-tag
+    if: needs.check-tag.outputs.is_merged == 'true'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -42,8 +65,11 @@ jobs:
 
   create-release:
     name: Create GitHub Release
-    needs: validate
+    needs: [check-tag, validate]
+    if: needs.check-tag.outputs.is_merged == 'true'
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v7
       
@@ -57,7 +83,8 @@ jobs:
 
   publish-crates:
     name: Publish to crates.io
-    needs: validate
+    needs: [check-tag, validate]
+    if: needs.check-tag.outputs.is_merged == 'true'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -84,4 +111,3 @@ jobs:
             exit 1
           fi
           cargo publish --token "$CARGO_REGISTRY_TOKEN"
-

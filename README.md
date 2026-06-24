@@ -137,10 +137,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ## Testing & Benchmarks
 
 ### Running Tests
-To run unit and mock integration tests verifying 2PC flows, redirects, and log sanitization:
+To run unit and mock integration tests:
 ```bash
 cargo test
 ```
+
+To run the automated E2E integration tests against a local StarRocks 4.0 Docker instance:
+```bash
+./tests/run_e2e.sh
+```
+For manual/step-by-step setup details of E2E testing, see [DEVELOPING.md](DEVELOPING.md).
 
 ### Formatting & Linting
 To check lint violations under the strict pedantic guidelines:

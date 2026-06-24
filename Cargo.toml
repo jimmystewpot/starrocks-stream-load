@@ -1,8 +1,10 @@
 [package]
 name = "starrocks-stream-load"
 description = "StarRocks Stream Load SDK for Rust."
-version = "0.9.3"
+version = "1.0.1"
 edition = "2024"
+# rust-version to follow apache arrow-rs which is 1.85
+rust-version = "1.85"
 license = "Apache-2.0"
 repository = "https://github.com/jimmystewpot/starrocks-stream-load"
 keywords = ["starrocks", "stream-load", "sdk", "http"]
