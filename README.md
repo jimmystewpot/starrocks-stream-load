@@ -1,3 +1,5 @@
+[![codecov](https://codecov.io/github/jimmystewpot/starrocks-stream-load/graph/badge.svg?token=EZKEKTR0F1)](https://codecov.io/github/jimmystewpot/starrocks-stream-load)
+
 # StarRocks Stream Load Rust SDK
 
 A production-grade, memory-safe, and high-performance asynchronous Rust SDK for StarRocks Stream Load. Aligned with the StarRocks Flink connector specification, this library provides support for both synchronous direct loads (V1 API) and two-phase commit (2PC) multi-stage transactions (V2 API).
