@@ -555,9 +555,8 @@ pub fn build_headers(props: &StreamLoadTableProperties) -> Result<reqwest::heade
         headers.insert("timezone", to_header_val("timezone", tz)?);
     }
     for (k, v) in &props.custom_headers {
-        let key = reqwest::header::HeaderName::from_bytes(k.as_bytes()).map_err(|e| {
-            Error::Transaction(format!("Invalid custom header name '{k}': {e}"))
-        })?;
+        let key = reqwest::header::HeaderName::from_bytes(k.as_bytes())
+            .map_err(|e| Error::Transaction(format!("Invalid custom header name '{k}': {e}")))?;
         let val = to_header_val(k, v)?;
         headers.insert(key, val);
     }
