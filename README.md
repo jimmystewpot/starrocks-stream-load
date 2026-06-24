@@ -1,5 +1,5 @@
 [![codecov](https://codecov.io/github/jimmystewpot/starrocks-stream-load/graph/badge.svg?token=EZKEKTR0F1)](https://codecov.io/github/jimmystewpot/starrocks-stream-load)
-[![Quality gate](https://sonarcloud.io/api/project_badges/quality_gate?project=jimmystewpot_starrocks-stream-load)](https://sonarcloud.io/summary/new_code?id=jimmystewpot_starrocks-stream-load)
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=jimmystewpot_starrocks-stream-load&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=jimmystewpot_starrocks-stream-load)
 
 # StarRocks Stream Load Rust SDK
 
