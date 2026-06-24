@@ -315,3 +315,112 @@ impl StreamLoadTablePropertiesBuilder {
         self.props
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_config_builder_defaults() {
+        let config = StreamLoadConfig::builder(
+            vec!["127.0.0.1:8030".to_string()],
+            "db".to_string(),
+            "admin".to_string(),
+        )
+        .build();
+
+        assert_eq!(config.load_urls, vec!["127.0.0.1:8030"]);
+        assert_eq!(config.database, "db");
+        assert_eq!(config.username, "admin");
+        assert_eq!(config.password, None);
+        assert_eq!(config.connect_timeout, Duration::from_secs(10));
+        assert_eq!(config.request_timeout, Duration::from_secs(600));
+        assert_eq!(config.max_retries, 3);
+        assert_eq!(config.retry_interval, Duration::from_millis(1000));
+        assert!(!config.enable_transaction);
+        assert!(!config.enable_multi_table_transaction);
+        assert_eq!(config.label_prefix, "rust-");
+        assert!(config.sanitize_error_log);
+    }
+
+    #[test]
+    fn test_config_builder_custom() {
+        let config = StreamLoadConfig::builder(
+            vec!["127.0.0.1:8030".to_string()],
+            "db".to_string(),
+            "admin".to_string(),
+        )
+        .password("password123")
+        .connect_timeout(Duration::from_secs(5))
+        .request_timeout(Duration::from_secs(30))
+        .max_retries(5)
+        .retry_interval(Duration::from_millis(500))
+        .publish_timeout(Duration::from_secs(15))
+        .enable_multi_table_transaction(true)
+        .label_prefix("test-prefix-")
+        .sanitize_error_log(false)
+        .chunk_limit(5 * 1024 * 1024)
+        .max_buffer_rows(100)
+        .scanning_frequency_ms(10)
+        .io_thread_count(4)
+        .build();
+
+        assert_eq!(config.password, Some("password123".to_string()));
+        assert_eq!(config.connect_timeout, Duration::from_secs(5));
+        assert_eq!(config.request_timeout, Duration::from_secs(30));
+        assert_eq!(config.max_retries, 5);
+        assert_eq!(config.retry_interval, Duration::from_millis(500));
+        assert_eq!(config.publish_timeout, Some(Duration::from_secs(15)));
+        assert!(config.enable_transaction);
+        assert!(config.enable_multi_table_transaction);
+        assert_eq!(config.label_prefix, "test-prefix-");
+        assert!(!config.sanitize_error_log);
+        assert_eq!(config.chunk_limit, 5 * 1024 * 1024);
+        assert_eq!(config.max_buffer_rows, 100);
+        assert_eq!(config.scanning_frequency_ms, 10);
+        assert_eq!(config.io_thread_count, 4);
+    }
+
+    #[test]
+    fn test_table_properties_builder() {
+        let props = StreamLoadTableProperties::builder()
+            .table("tbl")
+            .format(DataFormat::JSON)
+            .column_separator("\t")
+            .row_delimiter("\n")
+            .columns("a,b,c")
+            .jsonpaths("$.a,$.b,$.c")
+            .strip_outer_array(true)
+            .ignore_json_size(true)
+            .max_filter_ratio(0.5)
+            .strict_mode(true)
+            .timeout(60)
+            .compression("gzip")
+            .skip_header(1)
+            .where_clause("a > 1")
+            .partitions("p1")
+            .negative(true)
+            .timezone("UTC")
+            .header("k1", "v1")
+            .build();
+
+        assert_eq!(props.table, Some("tbl".to_string()));
+        assert_eq!(props.format, Some(DataFormat::JSON));
+        assert_eq!(props.column_separator, Some("\t".to_string()));
+        assert_eq!(props.row_delimiter, Some("\n".to_string()));
+        assert_eq!(props.columns, Some("a,b,c".to_string()));
+        assert_eq!(props.jsonpaths, Some("$.a,$.b,$.c".to_string()));
+        assert_eq!(props.strip_outer_array, Some(true));
+        assert_eq!(props.ignore_json_size, Some(true));
+        assert_eq!(props.max_filter_ratio, Some(0.5));
+        assert_eq!(props.strict_mode, Some(true));
+        assert_eq!(props.timeout, Some(60));
+        assert_eq!(props.compression, Some("gzip".to_string()));
+        assert_eq!(props.skip_header, Some(1));
+        assert_eq!(props.where_clause, Some("a > 1".to_string()));
+        assert_eq!(props.partitions, Some("p1".to_string()));
+        assert_eq!(props.negative, Some(true));
+        assert_eq!(props.timezone, Some("UTC".to_string()));
+        assert_eq!(props.custom_headers.get("k1"), Some(&"v1".to_string()));
+    }
+}

@@ -522,3 +522,130 @@ async fn test_error_log_fetch_and_redaction() {
         .unwrap();
     assert_eq!(fetched_via_abort, sanitized_expected);
 }
+
+#[tokio::test]
+async fn test_v1_stream_load_with_relative_redirect() {
+    let mock_server = MockServer::start().await;
+    let mock_uri = mock_server.uri();
+
+    // Mock FE redirect response with relative path
+    Mock::given(method("PUT"))
+        .and(path("/api/test_db/test_tbl/_stream_load"))
+        .respond_with(ResponseTemplate::new(307).insert_header("Location", "/be_load_relative"))
+        .mount(&mock_server)
+        .await;
+
+    // Mock BE actual upload response
+    Mock::given(method("PUT"))
+        .and(path("/be_load_relative"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "Status": "Success",
+            "TxnId": 43,
+            "Label": "test_label_rel",
+            "Message": "Load OK"
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let config =
+        StreamLoadConfig::builder(vec![mock_uri], "test_db".to_string(), "admin".to_string())
+            .password("password")
+            .build();
+
+    let props = StreamLoadTableProperties::builder()
+        .table("test_tbl")
+        .build();
+
+    let manager = StreamLoadManager::new(config, props).unwrap();
+    let res = manager
+        .send_single_batch("test_label_rel", bytes::Bytes::from("data"))
+        .await
+        .unwrap();
+
+    assert_eq!(res.status, "Success");
+    assert_eq!(res.txn_id, Some(43));
+}
+
+#[tokio::test]
+async fn test_get_load_status_mocked() {
+    let mock_server = MockServer::start().await;
+    let mock_uri = mock_server.uri();
+
+    Mock::given(method("GET"))
+        .and(path("/api/test_db/get_load_state"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "Status": "Success",
+            "TxnId": 111,
+            "Label": "label_status"
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let config =
+        StreamLoadConfig::builder(vec![mock_uri], "test_db".to_string(), "admin".to_string())
+            .password("password")
+            .build();
+
+    let props = StreamLoadTableProperties::builder().build();
+    let manager = StreamLoadManager::new(config, props).unwrap();
+
+    let res = manager.get_load_status("label_status").await.unwrap();
+    assert_eq!(res.status, "Success");
+    assert_eq!(res.txn_id, Some(111));
+}
+
+#[tokio::test]
+async fn test_cancel_load_mocked() {
+    let mock_server = MockServer::start().await;
+    let mock_uri = mock_server.uri();
+
+    Mock::given(method("POST"))
+        .and(path("/api/test_db/test_tbl/_cancel"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "Status": "Success",
+            "Message": "Cancelled"
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let config =
+        StreamLoadConfig::builder(vec![mock_uri], "test_db".to_string(), "admin".to_string())
+            .password("password")
+            .build();
+
+    let props = StreamLoadTableProperties::builder().build();
+    let manager = StreamLoadManager::new(config, props).unwrap();
+
+    let res = manager
+        .cancel_load("label_cancel", "test_db", "test_tbl")
+        .await
+        .unwrap();
+    assert_eq!(res.status, "Success");
+    assert_eq!(res.message, Some("Cancelled".to_string()));
+}
+
+#[tokio::test]
+async fn test_json_deserialization_failure_handling() {
+    let mock_server = MockServer::start().await;
+    let mock_uri = mock_server.uri();
+
+    Mock::given(method("POST"))
+        .and(path("/api/transaction/begin"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("invalid_json_payload"))
+        .mount(&mock_server)
+        .await;
+
+    let config =
+        StreamLoadConfig::builder(vec![mock_uri], "test_db".to_string(), "admin".to_string())
+            .password("password")
+            .build();
+
+    let props = StreamLoadTableProperties::builder().build();
+    let manager = StreamLoadManager::new(config, props).unwrap();
+
+    let err = manager
+        .begin_transaction("label_invalid")
+        .await
+        .unwrap_err();
+    assert!(matches!(err, starrocks_stream_load::Error::Json(_)));
+}

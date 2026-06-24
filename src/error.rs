@@ -293,3 +293,35 @@ pub fn try_get_error_log_url_from_txn_abort_reason(abort_reason: &str) -> Option
     }
     None
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_error_display_redaction() {
+        // Test StarRocksFailure redaction
+        let err_sr = Error::StarRocksFailure {
+            status: "FAIL".to_string(),
+            message: "Authorization failed for Basic YWRtaW46c2VjcmV0X3Bhc3M=".to_string(),
+            error_log_url: Some("http://admin:secret_pass@127.0.0.1/log".to_string()),
+        };
+        let displayed_sr = err_sr.to_string();
+        assert!(!displayed_sr.contains("secret_pass"));
+        assert!(!displayed_sr.contains("YWRtaW46c2VjcmV0X3Bhc3M="));
+        assert!(displayed_sr.contains("Basic ***"));
+
+        // Test Transaction error redaction
+        let err_tx =
+            Error::Transaction("Failed connection to http://user:pass123@host:8030".to_string());
+        let displayed_tx = err_tx.to_string();
+        assert!(!displayed_tx.contains("pass123"));
+        assert!(displayed_tx.contains("http://user:***@host:8030"));
+
+        // Test another Transaction error redaction for basic auth token
+        let err_tx2 = Error::Transaction("Basic YWRtaW46cGFzc3dvcmQ=".to_string());
+        let displayed_tx2 = err_tx2.to_string();
+        assert!(!displayed_tx2.contains("YWRtaW46cGFzc3dvcmQ="));
+        assert!(displayed_tx2.contains("Basic ***"));
+    }
+}
