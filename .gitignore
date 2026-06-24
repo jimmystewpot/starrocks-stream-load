@@ -13,3 +13,9 @@
 # Temp files
 *.tmp
 instructions.md
+
+# Large uncompressed test data files
+/test_data/72505394728.csv
+/test_data/NYPD_Crash_Data.csv
+/test_data/weatherdata.json
+/test_data/crashdata.json
