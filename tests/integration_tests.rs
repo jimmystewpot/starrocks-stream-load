@@ -789,3 +789,36 @@ async fn test_all_apis_non_ok_responses() {
     let err = manager.cancel_load("label", "db", "tbl").await.unwrap_err();
     assert!(err.to_string().contains("500"));
 }
+
+#[tokio::test]
+async fn test_anonymous_authentication() {
+    let mock_server = MockServer::start().await;
+    let mock_uri = mock_server.uri();
+
+    // Verify that the request received by the mock server DOES NOT have the AUTHORIZATION header.
+    Mock::given(method("POST"))
+        .and(path("/api/transaction/begin"))
+        .and(|request: &wiremock::Request| {
+            !request.headers.contains_key("Authorization")
+                && !request.headers.contains_key("authorization")
+        })
+        .respond_with(ResponseTemplate::new(200).set_body_json(
+            starrocks_stream_load::types::StreamLoadResponse {
+                status: "OK".to_string(),
+                txn_id: Some(999),
+                label: Some("label_anon".to_string()),
+                ..Default::default()
+            },
+        ))
+        .mount(&mock_server)
+        .await;
+
+    // Config with an empty username
+    let config =
+        StreamLoadConfig::builder(vec![mock_uri], "db".to_string(), "".to_string()).build();
+    let props = StreamLoadTableProperties::builder().build();
+    let manager = StreamLoadManager::new(config, props).unwrap();
+
+    let res = manager.begin_transaction("label_anon").await.unwrap();
+    assert_eq!(res, 999);
+}

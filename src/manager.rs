@@ -711,4 +711,22 @@ mod tests {
                 .contains("Invalid custom header name")
         );
     }
+
+    #[test]
+    fn test_convert_delimiter_direct() {
+        // Uppercase 0X variant
+        assert_eq!(convert_delimiter("0X0A").unwrap(), "\n");
+
+        // Length not even error
+        let err_len = convert_delimiter("0x1").unwrap_err();
+        assert!(
+            err_len
+                .to_string()
+                .contains("hex length must be a even number")
+        );
+
+        // Invalid hex character error
+        let err_hex = convert_delimiter("0x1g").unwrap_err();
+        assert!(err_hex.to_string().contains("invalid hex format"));
+    }
 }

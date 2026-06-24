@@ -324,4 +324,108 @@ mod tests {
         assert!(!displayed_tx2.contains("YWRtaW46cGFzc3dvcmQ="));
         assert!(displayed_tx2.contains("Basic ***"));
     }
+
+    #[test]
+    fn test_redact_sensitive_info_direct() {
+        // Test query-like parameters
+        let input = "connection failed: password=secret123&username=admin&passwd=pass456&pass=abc";
+        let redacted = redact_sensitive_info(input);
+        assert!(!redacted.contains("secret123"));
+        assert!(!redacted.contains("pass456"));
+        assert!(!redacted.contains("abc"));
+        assert!(redacted.contains("password=***"));
+        assert!(redacted.contains("passwd=***"));
+        assert!(redacted.contains("pass=***"));
+
+        // Test case-insensitivity of parameter labels
+        let input_case = "error: PASSWORD=FooBar&PassWD=BazQux&PASS=XYZ";
+        let redacted_case = redact_sensitive_info(input_case);
+        assert!(!redacted_case.contains("FooBar"));
+        assert!(!redacted_case.contains("BazQux"));
+        assert!(!redacted_case.contains("XYZ"));
+        assert!(redacted_case.contains("PASSWORD=***"));
+        assert!(redacted_case.contains("PassWD=***"));
+        assert!(redacted_case.contains("PASS=***"));
+    }
+
+    #[test]
+    fn test_sanitize_error_log_direct() {
+        // Test double-quoted values
+        let log_double = "Value \"secret_data\" is too long for column col1";
+        assert_eq!(
+            sanitize_error_log(log_double),
+            "column value is too long for column col1"
+        );
+
+        // Test double single-quotes
+        let log_double_single = "Value ''secret_single'' is invalid for col2";
+        assert_eq!(
+            sanitize_error_log(log_double_single),
+            "column value is invalid for col2"
+        );
+
+        // Test single quotes
+        let log_single = "Value 'secret_val' cannot be parsed";
+        assert_eq!(
+            sanitize_error_log(log_single),
+            "column value cannot be parsed"
+        );
+
+        // Test Row: truncation
+        let log_row = "Error at line 1. Row: 123,456,789,abc";
+        assert_eq!(sanitize_error_log(log_row), "Error at line 1.");
+
+        // Test empty/whitespace only fallback
+        let log_empty = "Row: 123, 456\nRow: 789";
+        assert_eq!(
+            sanitize_error_log(log_empty),
+            "Data validation errors detected. Row data has been redacted for security."
+        );
+    }
+
+    #[test]
+    fn test_try_get_error_log_url_from_txn_abort_reason_direct() {
+        // Test mixed casing of tracking url
+        let reason_mixed = "Transaction failed. TracKinG UrL: http://127.0.0.1/api/_load_error_log?file=error_log_111";
+        assert_eq!(
+            try_get_error_log_url_from_txn_abort_reason(reason_mixed),
+            Some("http://127.0.0.1/api/_load_error_log?file=error_log_111".to_string())
+        );
+
+        // Test skipping leading whitespaces/tabs/newlines
+        let reason_spaces =
+            "Aborted. TracKinG UrL:  \t\n http://127.0.0.1/api/_load_error_log?file=error_log_222";
+        assert_eq!(
+            try_get_error_log_url_from_txn_abort_reason(reason_spaces),
+            Some("http://127.0.0.1/api/_load_error_log?file=error_log_222".to_string())
+        );
+
+        // Test trailing punctuation (period)
+        let reason_dot = "Failed: tracking url: http://127.0.0.1/api/_load_error_log?file=error_log_333. Please check details.";
+        assert_eq!(
+            try_get_error_log_url_from_txn_abort_reason(reason_dot),
+            Some("http://127.0.0.1/api/_load_error_log?file=error_log_333".to_string())
+        );
+
+        // Test trailing punctuation (comma)
+        let reason_comma = "Failed: tracking url: http://127.0.0.1/api/_load_error_log?file=error_log_444, check log.";
+        assert_eq!(
+            try_get_error_log_url_from_txn_abort_reason(reason_comma),
+            Some("http://127.0.0.1/api/_load_error_log?file=error_log_444".to_string())
+        );
+
+        // Test rejection of invalid scheme/paths
+        let reason_ftp =
+            "Failed: tracking url: ftp://127.0.0.1/api/_load_error_log?file=error_log_555";
+        assert_eq!(
+            try_get_error_log_url_from_txn_abort_reason(reason_ftp),
+            None
+        );
+
+        let reason_invalid_path = "Failed: tracking url: http://127.0.0.1/api/some_other_path";
+        assert_eq!(
+            try_get_error_log_url_from_txn_abort_reason(reason_invalid_path),
+            None
+        );
+    }
 }
