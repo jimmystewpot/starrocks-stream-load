@@ -29,7 +29,7 @@ jobs:
         id: check
         run: |
           git fetch origin main
-          if git merge-base --is-ancestor HEAD origin/main; then
+          if git merge-base --is-ancestor HEAD FETCH_HEAD; then
             echo "Tag is merged to main. Proceeding with release."
             echo "is_merged=true" >> "$GITHUB_OUTPUT"
           else
