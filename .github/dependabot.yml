@@ -10,6 +10,17 @@ updates:
     schedule:
       interval: "weekly"
 
+  - package-ecosystem: "cargo"
+    directory: "/examples"
+    schedule:
+      interval: "weekly"
+    groups:
+      examples-dependencies:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "examples(deps)"
+
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:

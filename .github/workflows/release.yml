@@ -64,6 +64,13 @@ jobs:
       - name: Run tests
         run: cargo test --all-features
 
+      - name: Build and validate examples
+        run: |
+          echo "Building all examples for release validation..."
+          cargo build --package starrocks-examples --bins --release
+          cargo test --package starrocks-examples --lib
+          echo "✅ All examples built and validated successfully"
+
   create-release:
     name: Create GitHub Release
     needs: [check-tag, validate]
