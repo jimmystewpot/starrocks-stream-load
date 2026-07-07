@@ -21,7 +21,7 @@
 //! - **Failed(reason)**: Transaction failed with specific reason
 //!
 //! ## Production implementation details:
-//! - **Thread-safe state management**: Arc<Mutex<HashMap>> for concurrent access
+//! - **Thread-safe state management**: `Arc<Mutex<HashMap>>` for concurrent access
 //! - **State validation**: Ensure transitions only occur from valid states
 //! - **Recovery mechanisms**: Ability to query and manage incomplete transactions
 //! - **Timeout handling**: Automatic cleanup of stuck transactions
@@ -650,7 +650,7 @@ impl std::error::Error for TransactionError {}
 
 /// Simple helper to generate test labels
 fn generate_test_label(prefix: &str) -> String {
-    format!("{}_{}", prefix, chrono::Utc::now().timestamp())
+    format!("{}_{}", prefix, chrono::Utc::now().timestamp_millis())
 }
 
 #[tokio::main]

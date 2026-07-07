@@ -223,7 +223,7 @@ pub struct MultiTableTransactionStatus {
 
 /// Simple helper to generate test labels
 fn generate_test_label(prefix: &str) -> String {
-    format!("{}_{}", prefix, chrono::Utc::now().timestamp())
+    format!("{}_{}", prefix, chrono::Utc::now().timestamp_millis())
 }
 
 #[tokio::main]

@@ -15,6 +15,8 @@ use crate::types::StreamLoadResponse;
 /// # Creating a Manager
 ///
 /// ```rust,no_run
+/// # use std::error::Error;
+/// # fn main() -> Result<(), Box<dyn Error>> {
 /// use starrocks_stream_load::{DataFormat, StreamLoadConfig, StreamLoadManager, StreamLoadTableProperties};
 ///
 /// let config = StreamLoadConfig::builder(
@@ -32,6 +34,8 @@ use crate::types::StreamLoadResponse;
 ///     .build();
 ///
 /// let manager = StreamLoadManager::new(config, properties)?;
+/// # Ok(())
+/// # }
 /// ```
 ///
 /// # Thread Safety
@@ -73,6 +77,8 @@ impl StreamLoadManager {
     /// # Example
     ///
     /// ```rust,no_run
+    /// # use std::error::Error;
+    /// # fn main() -> Result<(), Box<dyn Error>> {
     /// use starrocks_stream_load::{DataFormat, StreamLoadConfig, StreamLoadManager, StreamLoadTableProperties};
     ///
     /// let config = StreamLoadConfig::builder(
@@ -90,6 +96,8 @@ impl StreamLoadManager {
     ///     .build();
     ///
     /// let manager = StreamLoadManager::new(config, properties)?;
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn new(config: StreamLoadConfig, properties: StreamLoadTableProperties) -> Result<Self> {
         Ok(Self {
@@ -175,9 +183,11 @@ impl StreamLoadManager {
     ///
     /// #[tokio::main]
     /// async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// #   use starrocks_stream_load::{StreamLoadConfig, StreamLoadTableProperties};
+    /// #   let config = StreamLoadConfig::builder(vec![], "".into(), "".into()).build();
+    /// #   let props = StreamLoadTableProperties::builder().build();
+    /// #   let manager = StreamLoadManager::new(config, props)?;
     ///     // Assume manager is already configured
-    ///     let manager: StreamLoadManager = /* ... */;
-    ///
     ///     let data = Bytes::from("1,John,Doe\n2,Jane,Smith\n");
     ///     let response = manager.send_single_batch("batch_001", data).await?;
     ///

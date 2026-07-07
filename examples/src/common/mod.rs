@@ -145,7 +145,14 @@ pub fn assert_success_response(response: &StreamLoadResponse) {
 #[must_use]
 pub fn generate_test_label(prefix: &str) -> String {
     use chrono::Utc;
-    format!("{}_{}", prefix, Utc::now().timestamp())
+    use rand::Rng;
+    let random_suffix: u32 = rand::thread_rng().gen_range(100_000..1_000_000);
+    format!(
+        "{}_{}_{}",
+        prefix,
+        Utc::now().timestamp_millis(),
+        random_suffix
+    )
 }
 
 /// Setup basic tracing for examples

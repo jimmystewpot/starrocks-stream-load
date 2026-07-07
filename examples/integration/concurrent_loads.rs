@@ -381,7 +381,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     /// Simple helper to generate test labels
     fn generate_test_label(prefix: &str) -> String {
-        format!("{}_{}", prefix, chrono::Utc::now().timestamp())
+        format!("{}_{}", prefix, chrono::Utc::now().timestamp_millis())
     }
     println!("🚀 StarRocks Concurrent Stream Load Operations Example");
     println!("══════════════════════════════════════════════════════\n");
