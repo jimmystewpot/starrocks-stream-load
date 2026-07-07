@@ -236,7 +236,7 @@ jobs:
   examples-validate:
     name: Examples Validation
     runs-on: arc-runner-set
-    needs: [examples-lint, examples-format, examples-doc, examples-lib-test]
+    needs: [examples-compile, examples-lint, examples-format, examples-doc, examples-lib-test]
     if: always()
     steps:
       - uses: actions/checkout@v7
@@ -291,10 +291,11 @@ jobs:
           echo "✅ Examples Cargo.toml validation passed"
 
       - name: Generate failure report (if needed)
-        if: needs.examples-lint.result == 'failure' || needs.examples-format.result == 'failure' || needs.examples-doc.result == 'failure' || needs.examples-lib-test.result == 'failure'
+        if: needs.examples-compile.result == 'failure' || needs.examples-lint.result == 'failure' || needs.examples-format.result == 'failure' || needs.examples-doc.result == 'failure' || needs.examples-lib-test.result == 'failure'
         run: |
           echo "❌ Examples validation failed"
           echo "Failed jobs:"
+          [[ "${{ needs.examples-compile.result }}" == "failure" ]] && echo "  - examples-compile"
           [[ "${{ needs.examples-lint.result }}" == "failure" ]] && echo "  - examples-lint"
           [[ "${{ needs.examples-format.result }}" == "failure" ]] && echo "  - examples-format"
           [[ "${{ needs.examples-doc.result }}" == "failure" ]] && echo "  - examples-doc"
@@ -329,6 +330,7 @@ jobs:
 
       - name: Create summary comment (for PRs)
         if: github.event_name == 'pull_request' && (
+            needs.examples-compile.result == 'failure' ||
             needs.examples-lint.result == 'failure' || 
             needs.examples-format.result == 'failure' || 
             needs.examples-doc.result == 'failure' || 
