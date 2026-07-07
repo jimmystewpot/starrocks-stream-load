@@ -1,34 +1,34 @@
 //! # Metrics and Monitoring Example
 #![allow(clippy::print_stdout)]
-//! 
+//!
 //! This example demonstrates production-grade metrics collection and monitoring
 //! for StarRocks stream load operations.
-//! 
+//!
 //! ## What this example demonstrates:
 //! 1. Thread-safe metrics aggregation using atomic primitives
 //! 2. Request counting (total, successful, failed)
 //! 3. Performance metrics (latency, throughput, timing distributions)
 //! 4. Network-level metrics (retries, timeouts, bytes transferred)
 //! 5. Integration with SDK operations for comprehensive observability
-//! 
+//!
 //! ## Production implementation details:
 //! - **Atomic operations**: Thread-safe metrics without locks
 //! - **High-resolution timing**: Use nanosecond precision for latency
 //! - **Percentile calculations**: Track P50, P95, P99 for SLAs
 //! - **Throughput metrics**: Operations per second and bytes per second
 //! - **Memory efficiency**: Minimize heap allocations for high-frequency operations
-//! 
+//!
 //! ## Application layer pattern:
 //! This demonstrates that the SDK provides operations while the application layer
 //! implements metrics collection for production observability.
 
-use starrocks_stream_load::{
-    DataFormat, StreamLoadConfig, StreamLoadTableProperties, StreamLoadManager,
-};
 use bytes::Bytes;
+use starrocks_stream_load::{
+    DataFormat, StreamLoadConfig, StreamLoadManager, StreamLoadTableProperties,
+};
 use std::error::Error;
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 /// Comprehensive metrics collection for stream load operations
@@ -40,13 +40,13 @@ pub struct StreamLoadMetrics {
     pub failed_requests: AtomicUsize,
     pub total_retries: AtomicUsize,
     pub timeouts: AtomicUsize,
-    
+
     // Performance metrics (duration in nanoseconds)
     pub total_latency_ns: AtomicU64,
     pub min_latency_ns: AtomicU64,
     pub max_latency_ns: AtomicU64,
     pub successful_latency_ns: AtomicU64,
-    
+
     // Data transfer metrics
     pub total_bytes_sent: AtomicU64,
     pub total_bytes_received: AtomicU64,
@@ -68,32 +68,61 @@ impl StreamLoadMetrics {
     }
 
     /// Record a successful completion
-    pub fn record_success(&self, duration: Duration, bytes_sent: u64, bytes_received: u64, rows_loaded: u64) {
+    pub fn record_success(
+        &self,
+        duration: Duration,
+        bytes_sent: u64,
+        bytes_received: u64,
+        rows_loaded: u64,
+    ) {
         self.successful_requests.fetch_add(1, Ordering::Relaxed);
-        self.total_bytes_sent.fetch_add(bytes_sent, Ordering::Relaxed);
-        self.total_bytes_received.fetch_add(bytes_received, Ordering::Relaxed);
-        self.rows_processed.fetch_add(rows_loaded, Ordering::Relaxed);
+        self.total_bytes_sent
+            .fetch_add(bytes_sent, Ordering::Relaxed);
+        self.total_bytes_received
+            .fetch_add(bytes_received, Ordering::Relaxed);
+        self.rows_processed
+            .fetch_add(rows_loaded, Ordering::Relaxed);
         self.rows_loaded.fetch_add(rows_loaded, Ordering::Relaxed);
-        
+
         let duration_ns = duration.as_nanos().try_into().unwrap_or(u64::MAX);
-        self.total_latency_ns.fetch_add(duration_ns, Ordering::Relaxed);
-        self.successful_latency_ns.fetch_add(duration_ns, Ordering::Relaxed);
-        
+        self.total_latency_ns
+            .fetch_add(duration_ns, Ordering::Relaxed);
+        self.successful_latency_ns
+            .fetch_add(duration_ns, Ordering::Relaxed);
+
         // Update min/max latency (CAS loop for thread safety)
         loop {
             let current_min = self.min_latency_ns.load(Ordering::Relaxed);
             let new_min = duration_ns.min(current_min);
-            if new_min == current_min || 
-               self.min_latency_ns.compare_exchange_weak(current_min, new_min, Ordering::Relaxed, Ordering::Relaxed).is_ok() {
+            if new_min == current_min
+                || self
+                    .min_latency_ns
+                    .compare_exchange_weak(
+                        current_min,
+                        new_min,
+                        Ordering::Relaxed,
+                        Ordering::Relaxed,
+                    )
+                    .is_ok()
+            {
                 break;
             }
         }
-        
+
         loop {
             let current_max = self.max_latency_ns.load(Ordering::Relaxed);
             let new_max = duration_ns.max(current_max);
-            if new_max == current_max || 
-               self.max_latency_ns.compare_exchange_weak(current_max, new_max, Ordering::Relaxed, Ordering::Relaxed).is_ok() {
+            if new_max == current_max
+                || self
+                    .max_latency_ns
+                    .compare_exchange_weak(
+                        current_max,
+                        new_max,
+                        Ordering::Relaxed,
+                        Ordering::Relaxed,
+                    )
+                    .is_ok()
+            {
                 break;
             }
         }
@@ -168,7 +197,8 @@ impl StreamLoadMetrics {
     #[must_use]
     pub fn rows_per_second(&self) -> f64 {
         let rows = self.rows_loaded.load(Ordering::Relaxed);
-        let total_latency_s = self.total_latency_ns.load(Ordering::Relaxed) as f64 / 1_000_000_000.0;
+        let total_latency_s =
+            self.total_latency_ns.load(Ordering::Relaxed) as f64 / 1_000_000_000.0;
         if total_latency_s == 0.0 {
             0.0
         } else {
@@ -180,7 +210,8 @@ impl StreamLoadMetrics {
     #[must_use]
     pub fn mb_per_second(&self) -> f64 {
         let bytes = self.total_bytes_received.load(Ordering::Relaxed);
-        let total_latency_s = self.total_latency_ns.load(Ordering::Relaxed) as f64 / 1_000_000_000.0;
+        let total_latency_s =
+            self.total_latency_ns.load(Ordering::Relaxed) as f64 / 1_000_000_000.0;
         if total_latency_s == 0.0 {
             0.0
         } else {
@@ -276,9 +307,15 @@ pub struct MetricsSnapshot {
 
 impl std::fmt::Display for MetricsSnapshot {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "══════════════════════════════════════════════════════════════")?;
+        writeln!(
+            f,
+            "══════════════════════════════════════════════════════════════"
+        )?;
         writeln!(f, "Stream Load Metrics Snapshot")?;
-        writeln!(f, "══════════════════════════════════════════════════════════════")?;
+        writeln!(
+            f,
+            "══════════════════════════════════════════════════════════════"
+        )?;
         writeln!(f, "Request Statistics:")?;
         writeln!(f, "  Total Requests:      {}", self.total_requests)?;
         writeln!(f, "  Successful:          {}", self.successful_requests)?;
@@ -301,7 +338,10 @@ impl std::fmt::Display for MetricsSnapshot {
         writeln!(f, "  Rows Loaded:         {}", self.rows_loaded)?;
         writeln!(f, "  Bytes Sent:          {}", self.total_bytes_sent)?;
         writeln!(f, "  Bytes Received:      {}", self.total_bytes_received)?;
-        writeln!(f, "══════════════════════════════════════════════════════════════")
+        writeln!(
+            f,
+            "══════════════════════════════════════════════════════════════"
+        )
     }
 }
 
@@ -320,7 +360,7 @@ where
 {
     metrics.record_request();
     let request_start = Instant::now();
-    
+
     match operation(metrics.clone()).await {
         Ok(result) => {
             let duration = request_start.elapsed();
@@ -343,9 +383,10 @@ fn generate_test_label(prefix: &str) -> String {
 fn assert_success_response(response: &starrocks_stream_load::StreamLoadResponse) {
     assert!(
         response.status == "Success" || response.status == "OK",
-        "Expected success status, got: {}", response.status
+        "Expected success status, got: {}",
+        response.status
     );
-    
+
     if let Some(loaded) = response.number_loaded_rows {
         assert!(loaded > 0, "Expected loaded rows > 0, got: {}", loaded);
     }
@@ -368,7 +409,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // STARROCKS SETUP
     // =================================================================
     println!("\n📋 Step 2: Setting up StarRocks manager...");
-    
+
     let config = StreamLoadConfig::builder(
         vec!["http://127.0.0.1:8030".to_string()],
         "test_db".to_string(),
@@ -396,26 +437,33 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // =================================================================
     println!("\n📋 Demonstration 1: Basic metrics collection");
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    
+
     let operation_count = 5;
     println!("Executing {operation_count} operations with complete metrics tracking...");
-    
+
     for i in 0..operation_count {
         let manager = manager_ref.clone();
         let metrics = metrics.clone();
-        let data = Bytes::from(format!(r#"id,name,value
+        let data = Bytes::from(format!(
+            r#"id,name,value
 {},MetricsUser,{}
-"#, i + 1, (i + 1) * 10));
-        
+"#,
+            i + 1,
+            (i + 1) * 10
+        ));
+
         let start = Instant::now();
-        
-        match manager.send_single_batch(&generate_test_label("metrics_sample"), data).await {
+
+        match manager
+            .send_single_batch(&generate_test_label("metrics_sample"), data)
+            .await
+        {
             Ok(response) => {
                 let duration = start.elapsed();
                 let bytes_sent = 150 + (i * 10);
-                 let bytes_received = response.load_bytes.unwrap_or(0).cast_unsigned();
-                 let rows_loaded = response.number_loaded_rows.unwrap_or(0).cast_unsigned();
-                
+                let bytes_received = response.load_bytes.unwrap_or(0).cast_unsigned();
+                let rows_loaded = response.number_loaded_rows.unwrap_or(0).cast_unsigned();
+
                 metrics.record_success(duration, bytes_sent, bytes_received, rows_loaded);
                 assert_success_response(&response);
                 println!("  Operation {} completed successfully", i + 1);
@@ -432,7 +480,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // =================================================================
     println!("\n📋 Demonstration 2: Metrics analysis and reporting");
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    
+
     let snapshot = metrics.snapshot();
     println!("{snapshot}");
 
@@ -441,20 +489,25 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // =================================================================
     println!("\n📋 Demonstration 3: Simulated failure scenarios");
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    
+
     let error_scenarios = 3;
     println!("Simulating {error_scenarios} error scenarios...");
-    
+
     for i in 0..error_scenarios {
         let manager = manager_ref.clone();
         let metrics = metrics.clone();
-        let data = Bytes::from(r#"id,name,value
+        let data = Bytes::from(
+            r#"id,name,value
 9999,InvalidData,999
-"#);
-        
+"#,
+        );
+
         let start = Instant::now();
-        
-        match manager.send_single_batch(&generate_test_label("error_scenario"), data).await {
+
+        match manager
+            .send_single_batch(&generate_test_label("error_scenario"), data)
+            .await
+        {
             Ok(_) => {
                 let duration = start.elapsed();
                 metrics.record_success(duration, 100, 50, 0);
@@ -472,20 +525,27 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // =================================================================
     println!("\n📋 Demonstration 4: Retry tracking");
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    
+
     let retry_count = 4;
     println!("Simulating {retry_count} retry operations...");
-    
+
     for i in 0..retry_count {
         let metrics = metrics.clone();
         let manager = manager_ref.clone();
-        let data = Bytes::from(format!(r#"id,name,value
+        let data = Bytes::from(format!(
+            r#"id,name,value
 {},RetryUser,{}
-"#, i + 10, (i + 10) * 2));
-        
+"#,
+            i + 10,
+            (i + 10) * 2
+        ));
+
         let start = Instant::now();
-        
-        if let Ok(response) = manager.send_single_batch(&generate_test_label("retry_attempt"), data).await {
+
+        if let Ok(response) = manager
+            .send_single_batch(&generate_test_label("retry_attempt"), data)
+            .await
+        {
             let duration = start.elapsed();
             metrics.record_retry(); // Simulate a retry happened
             metrics.record_success(duration, 150, 100, 1);
@@ -501,7 +561,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // =================================================================
     println!("\n📋 FINAL COMPREHENSIVE METRICS REPORT");
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    
+
     let final_snapshot = metrics.snapshot();
     println!("{final_snapshot}");
 
@@ -510,31 +570,52 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // =================================================================
     println!("\n📋 METRICS ANALYSIS");
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    
+
     println!("Health Indicators:");
-    
+
     if final_snapshot.success_rate >= 95.0 {
-        println!("✓ Success rate is healthy: {:.2}%", final_snapshot.success_rate);
+        println!(
+            "✓ Success rate is healthy: {:.2}%",
+            final_snapshot.success_rate
+        );
     } else {
-        println!("⚠ Success rate needs attention: {:.2}%", final_snapshot.success_rate);
+        println!(
+            "⚠ Success rate needs attention: {:.2}%",
+            final_snapshot.success_rate
+        );
     }
-    
+
     if final_snapshot.avg_latency_ms <= 500.0 {
-        println!("✓ Average latency is acceptable: {:.2} ms", final_snapshot.avg_latency_ms);
+        println!(
+            "✓ Average latency is acceptable: {:.2} ms",
+            final_snapshot.avg_latency_ms
+        );
     } else {
-        println!("⚠ Average latency is high: {:.2} ms", final_snapshot.avg_latency_ms);
+        println!(
+            "⚠ Average latency is high: {:.2} ms",
+            final_snapshot.avg_latency_ms
+        );
     }
-    
+
     if final_snapshot.retry_rate <= 10.0 {
         println!("✓ Retry rate is low: {:.2}%", final_snapshot.retry_rate);
     } else {
-        println!("⚠ Retry rate is elevated: {:.2}%", final_snapshot.retry_rate);
+        println!(
+            "⚠ Retry rate is elevated: {:.2}%",
+            final_snapshot.retry_rate
+        );
     }
-    
+
     println!("\nPerformance Insights:");
-    println!("  Throughput: {:.2} rows/second", final_snapshot.rows_per_second);
+    println!(
+        "  Throughput: {:.2} rows/second",
+        final_snapshot.rows_per_second
+    );
     println!("  Data rate: {:.2} MB/second", final_snapshot.mb_per_second);
-    println!("  Efficiency: {:.2}%", (final_snapshot.rows_loaded as f64 / final_snapshot.rows_processed as f64) * 100.0);
+    println!(
+        "  Efficiency: {:.2}%",
+        (final_snapshot.rows_loaded as f64 / final_snapshot.rows_processed as f64) * 100.0
+    );
 
     println!("\n✅ Metrics demonstration completed successfully!");
     println!("   This comprehensive metrics system provides complete operational visibility");

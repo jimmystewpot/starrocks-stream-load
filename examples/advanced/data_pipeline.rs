@@ -23,10 +23,10 @@
 //! - **Reliability**: Ensure end-to-end data integrity and guaranteed delivery
 //! - **Monitoring**: Comprehensive pipeline health tracking and alerting
 
-use starrocks_stream_load::{
-    DataFormat, StreamLoadConfig, StreamLoadTableProperties, StreamLoadManager,
-};
 use bytes::Bytes;
+use starrocks_stream_load::{
+    DataFormat, StreamLoadConfig, StreamLoadManager, StreamLoadTableProperties,
+};
 use std::collections::VecDeque;
 use std::error::Error;
 use std::sync::Arc;
@@ -102,11 +102,11 @@ impl DataQueue {
 
     pub async fn enqueue(&self, record: DataRecord) -> Result<(), QueueError> {
         let mut records = self.records.lock().await;
-        
+
         if records.len() >= self.capacity {
             return Err(QueueError::QueueFull);
         }
-        
+
         records.push_back(record);
         Ok(())
     }
@@ -138,7 +138,7 @@ impl DataQueue {
         let processed = *self.total_processed.lock().await;
         let failed = *self.total_failed.lock().await;
         let queue_size = self.size().await;
-        
+
         PipelineStats {
             records_processed: processed,
             records_failed: failed,
@@ -206,7 +206,10 @@ impl DataProcessor {
     pub fn validate_quality(&self, data: &Bytes) -> QualityCheck {
         // Size validation
         if data.len() > self.quality_rules.max_size_bytes {
-            return QualityCheck::Fail(format!("Data exceeds max size of {} bytes", self.quality_rules.max_size_bytes));
+            return QualityCheck::Fail(format!(
+                "Data exceeds max size of {} bytes",
+                self.quality_rules.max_size_bytes
+            ));
         }
 
         // Encoding validation
@@ -242,7 +245,11 @@ impl DataProcessor {
         Ok(data)
     }
 
-    fn apply_transform(&self, data: Bytes, transform: &Transform) -> Result<Bytes, ProcessingError> {
+    fn apply_transform(
+        &self,
+        data: Bytes,
+        transform: &Transform,
+    ) -> Result<Bytes, ProcessingError> {
         match transform {
             Transform::Lowercase => {
                 let str_data = std::str::from_utf8(&data)
@@ -259,8 +266,9 @@ impl DataProcessor {
             Transform::ValidateNumeric => {
                 let str_data = std::str::from_utf8(&data)
                     .map_err(|e| ProcessingError::TransformationError(e.to_string()))?;
-                str_data.parse::<f64>()
-                    .map_err(|_| ProcessingError::TransformationError("Not a valid number".to_string()))?;
+                str_data.parse::<f64>().map_err(|_| {
+                    ProcessingError::TransformationError("Not a valid number".to_string())
+                })?;
                 Ok(data)
             }
             Transform::NormalizeTimestamp => {
@@ -315,7 +323,7 @@ impl DataPipeline {
         quality_rules: QualityRules,
     ) -> Result<Self, Box<dyn Error>> {
         let manager = StreamLoadManager::new(config, properties)?;
-        
+
         Ok(Self {
             name,
             state: Arc::new(Mutex::new(PipelineState::Initialized)),
@@ -329,9 +337,12 @@ impl DataPipeline {
     pub async fn start(&self) -> Result<(), PipelineError> {
         let mut state = self.state.lock().await;
         if *state != PipelineState::Initialized && *state != PipelineState::Paused {
-            return Err(PipelineError::InvalidState(format!("Cannot start in state: {:?}", *state)));
+            return Err(PipelineError::InvalidState(format!(
+                "Cannot start in state: {:?}",
+                *state
+            )));
         }
-        
+
         *state = PipelineState::Started;
         let mut stats = self.stats.lock().await;
         if stats.start_time.is_none() {
@@ -347,19 +358,24 @@ impl DataPipeline {
     pub async fn stop(&self) -> Result<(), PipelineError> {
         let mut state = self.state.lock().await;
         if *state != PipelineState::Running {
-            return Err(PipelineError::InvalidState(format!("Cannot stop in state: {:?}", *state)));
+            return Err(PipelineError::InvalidState(format!(
+                "Cannot stop in state: {:?}",
+                *state
+            )));
         }
-        
+
         *state = PipelineState::Completed;
         let mut stats = self.stats.lock().await;
         stats.end_time = Some(Instant::now());
-        
+
         println!("✅ Pipeline '{}' stopped", self.name);
         Ok(())
     }
 
     pub async fn add_record(&self, record: DataRecord) -> Result<(), PipelineError> {
-        self.data_queue.enqueue(record).await
+        self.data_queue
+            .enqueue(record)
+            .await
             .map_err(|e| PipelineError::QueueError(e.to_string()))?;
         Ok(())
     }
@@ -381,32 +397,39 @@ impl DataPipeline {
             };
 
             let processing_start = Instant::now();
-            
+
             // Process data
             match self.processor.process_data(record.data.clone()) {
                 Ok(processed_data) => {
                     let processing_time = processing_start.elapsed();
-                    
+
                     // Load to StarRocks
                     let ingestion_start = Instant::now();
-                    let result = self.manager.send_single_batch(record.id.as_str(), processed_data).await;
+                    let result = self
+                        .manager
+                        .send_single_batch(record.id.as_str(), processed_data)
+                        .await;
                     let ingestion_time = ingestion_start.elapsed();
-                    
+
                     match result {
                         Ok(_) => {
                             self.data_queue.record_success().await;
-                            
+
                             // Update metrics
                             let mut stats = self.stats.lock().await;
                             stats.total_bytes_processed += record.data.len() as u64;
                             stats.processing_time_ms += processing_time.as_millis() as u64;
                             stats.ingestion_time_ms += ingestion_time.as_millis() as u64;
-                            
+
                             processed += 1;
-                            
+
                             if processed <= 2 {
-                                println!("✓ Record {} processed successfully. Processing: {}ms, Ingestion: {}ms",
-                                        record.id, processing_time.as_millis(), ingestion_time.as_millis());
+                                println!(
+                                    "✓ Record {} processed successfully. Processing: {}ms, Ingestion: {}ms",
+                                    record.id,
+                                    processing_time.as_millis(),
+                                    ingestion_time.as_millis()
+                                );
                             }
                         }
                         Err(error) => {
@@ -424,7 +447,11 @@ impl DataPipeline {
 
         let total_time = start.elapsed();
         if processed > 0 {
-            println!("✓ Batch complete: {} records processed in {}ms", processed, total_time.as_millis());
+            println!(
+                "✓ Batch complete: {} records processed in {}ms",
+                processed,
+                total_time.as_millis()
+            );
         }
 
         Ok(processed)
@@ -477,7 +504,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // PIPELINE SETUP
     // =================================================================
     println!("📋 Step 1: Configuring data pipeline...");
-    
+
     // Quality rules for data validation
     let quality_rules = QualityRules {
         allow_nulls: false,
@@ -495,7 +522,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // STARROCKS SETUP
     // =================================================================
     println!("\n📋 Step 2: Setting up StarRocks connection...");
-    
+
     let config = StreamLoadConfig::builder(
         vec!["http://127.0.0.1:8030".to_string()],
         "test_db".to_string(),
@@ -514,7 +541,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .skip_header(1)
         .build();
 
-    let mut pipeline = DataPipeline::new("demo_pipeline".to_string(), config, properties, quality_rules)?;
+    let mut pipeline = DataPipeline::new(
+        "demo_pipeline".to_string(),
+        config,
+        properties,
+        quality_rules,
+    )?;
     println!("✓ Data pipeline created");
 
     // =================================================================
@@ -522,23 +554,25 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // =================================================================
     println!("\n📋 Demonstration 1: Individual record processing");
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    
+
     pipeline.start().await?;
-    
+
     let record1 = DataRecord {
         id: generate_test_label("pipeline_record_1"),
-        data: Bytes::from(r#"id,name,value
+        data: Bytes::from(
+            r#"id,name,value
 1,PipelineUser1,25
 2,PipelineUser2,30
-"#),
+"#,
+        ),
         source: "test_source".to_string(),
         timestamp: chrono::Utc::now(),
         metadata: std::collections::HashMap::new(),
     };
-    
+
     pipeline.add_record(record1).await?;
     println!("✓ Added record to pipeline queue");
-    
+
     let processed = pipeline.process_batch(1).await?;
     println!("✓ Processed {} records", processed);
 
@@ -547,16 +581,21 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // =================================================================
     println!("\n📋 Demonstration 2: Batch processing");
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    
+
     let batch_size = 3;
     println!("Adding {} records to queue...", batch_size);
-    
+
     for i in 0..batch_size {
         let record = DataRecord {
             id: generate_test_label(&format!("pipeline_batch_{}", i)),
-            data: Bytes::from(format!(r#"id,name,value
+            data: Bytes::from(format!(
+                r#"id,name,value
 {},BatchUser{},{}
-"#, i + 10, i, (i + 10) * 3)),
+"#,
+                i + 10,
+                i,
+                (i + 10) * 3
+            )),
             source: "batch_source".to_string(),
             timestamp: chrono::Utc::now(),
             metadata: {
@@ -565,12 +604,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 meta
             },
         };
-        
+
         pipeline.add_record(record).await?;
     }
-    
+
     println!("✓ Added {} records to queue", batch_size);
-    
+
     let processed = pipeline.process_batch(batch_size).await?;
     println!("✓ Processed {} records in batch", processed);
 
@@ -579,15 +618,20 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // =================================================================
     println!("\n📋 Demonstration 3: Data quality validation");
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    
+
     let invalid_records = vec![
         ("empty_data", Bytes::new()),
         ("large_data", Bytes::from("a".repeat(1024 * 101))), // Exceeds max size
-        ("valid_data", Bytes::from(r#"id,name,value
+        (
+            "valid_data",
+            Bytes::from(
+                r#"id,name,value
 999,ValidUser,999
-"#)),
+"#,
+            ),
+        ),
     ];
-    
+
     for (name, data) in invalid_records {
         println!("Testing: {}", name);
         match pipeline.processor.validate_quality(&data) {
@@ -602,13 +646,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // =================================================================
     println!("\n📋 Demonstration 4: Data transformation");
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    
+
     pipeline.processor.add_transformation(Transform::Lowercase);
-    pipeline.processor.add_transformation(Transform::RemoveWhitespace);
-    
+    pipeline
+        .processor
+        .add_transformation(Transform::RemoveWhitespace);
+
     let test_data = Bytes::from("  HELLO  WORLD  ");
     println!("Original: '{}'", String::from_utf8_lossy(&test_data));
-    
+
     match pipeline.processor.process_data(test_data) {
         Ok(transformed) => {
             println!("Transformed: '{}'", String::from_utf8_lossy(&transformed));
@@ -624,11 +670,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // =================================================================
     println!("\n📋 Demonstration 5: Pipeline statistics and monitoring");
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    
+
     let metrics = pipeline.get_statistics().await;
     let queue_stats = pipeline.get_queue_stats().await;
     let state = pipeline.get_state().await;
-    
+
     println!("Pipeline Status:");
     println!("  Name: {}", pipeline.name);
     println!("  State: {:?}", state);
@@ -641,18 +687,26 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("  Total bytes processed: {}", metrics.total_bytes_processed);
     println!("  Total processing time: {}ms", metrics.processing_time_ms);
     println!("  Total ingestion time: {}ms", metrics.ingestion_time_ms);
-    
+
     if metrics.total_bytes_processed > 0 {
         let avg_processing_mb_per_sec = if metrics.processing_time_ms > 0 {
-            ((metrics.total_bytes_processed as f64 / 1024.0 / 1024.0) / (metrics.processing_time_ms as f64 / 1000.0)) * 1000.0
+            ((metrics.total_bytes_processed as f64 / 1024.0 / 1024.0)
+                / (metrics.processing_time_ms as f64 / 1000.0))
+                * 1000.0
         } else {
             0.0
         };
-        println!("  Avg processing throughput: {:.2} MB/s", avg_processing_mb_per_sec);
+        println!(
+            "  Avg processing throughput: {:.2} MB/s",
+            avg_processing_mb_per_sec
+        );
     }
-    
+
     if let Some(start_time) = metrics.start_time {
-        let duration = metrics.end_time.unwrap_or_else(Instant::now).duration_since(start_time);
+        let duration = metrics
+            .end_time
+            .unwrap_or_else(Instant::now)
+            .duration_since(start_time);
         println!("  Total pipeline duration: {}ms", duration.as_millis());
     }
 
@@ -661,14 +715,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // =================================================================
     println!("\n📋 Demonstration 6: Pipeline lifecycle management");
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    
+
     println!("Pipeline Lifecycle:");
     println!("1. INITIALIZED → Pipeline created and configured");
     println!("2. RUNNING → Actively processing data");
     println!("3. PAUSED → Temporarily suspended processing");
     println!("4. COMPLETED → Pipeline finished successfully");
     println!("5. FAILED → Pipeline encountered unrecoverable error");
-    
+
     pipeline.stop().await?;
     println!("\n✓ Pipeline stopped successfully");
 
@@ -677,28 +731,28 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // =================================================================
     println!("\n📋 Demonstration 7: Production pipeline best practices");
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    
+
     println!("Production Pipeline Requirements:");
     println!("🔍 Data Quality:");
     println!("   • Comprehensive validation rules");
     println!("   • Schema enforcement and evolution");
     println!("   • Data profiling and anomaly detection");
     println!();
-    
+
     println!("⚡ Performance:");
     println!("   • Batch processing with optimal sizes");
     println!("   • Parallel processing capabilities");
     println!("   • Resource utilization monitoring");
     println!("   • Throughput optimization");
     println!();
-    
+
     println!("🛡️  Reliability:");
     println!("   • Checkpointing and state recovery");
     println!("   • Dead letter queue for failed records");
     println!("   • Circuit breakers for system protection");
     println!("   • Comprehensive error logging");
     println!();
-    
+
     println!("📊 Observability:");
     println!("   • Real-time metrics and dashboards");
     println!("   • Business KPIs tracking");

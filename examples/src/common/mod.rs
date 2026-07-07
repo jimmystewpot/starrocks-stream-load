@@ -1,13 +1,13 @@
 // Common utilities for testing examples
-pub use starrocks_stream_load::{DataFormat, StreamLoadResponse};
-use wiremock::{Mock, MockServer, ResponseTemplate};
-use wiremock::matchers::{method, path};
 use serde_json::json;
+pub use starrocks_stream_load::{DataFormat, StreamLoadResponse};
+use wiremock::matchers::{method, path};
+use wiremock::{Mock, MockServer, ResponseTemplate};
 
 /// Setup a mock `StarRocks` server for testing
 pub async fn setup_mock_starrocks() -> MockServer {
     let mock_server = MockServer::start().await;
-    
+
     // Mock successful stream load response
     Mock::given(method("PUT"))
         .and(path("/api/test_db/test_table/_stream_load"))
@@ -85,12 +85,12 @@ pub async fn setup_mock_starrocks() -> MockServer {
 #[must_use]
 pub fn generate_csv_data(rows: usize) -> bytes::Bytes {
     let mut csv = String::from("id,name,value\n");
-    
+
     for i in 0..rows {
         use std::fmt::Write;
         let _ = writeln!(csv, "{},user_{},{}", i + 1, i, (i * 10) + 5);
     }
-    
+
     bytes::Bytes::from(csv)
 }
 
@@ -102,7 +102,7 @@ pub fn generate_csv_data(rows: usize) -> bytes::Bytes {
 #[must_use]
 pub fn generate_json_data(rows: usize) -> bytes::Bytes {
     let mut json_array = Vec::new();
-    
+
     for i in 0..rows {
         let obj = json!({
             "id": i + 1,
@@ -111,7 +111,7 @@ pub fn generate_json_data(rows: usize) -> bytes::Bytes {
         });
         json_array.push(obj);
     }
-    
+
     let json_string = serde_json::to_vec(&json_array).unwrap();
     bytes::Bytes::from(json_string)
 }
@@ -132,9 +132,10 @@ pub fn generate_arrow_data(rows: usize) -> bytes::Bytes {
 pub fn assert_success_response(response: &StreamLoadResponse) {
     assert!(
         response.status == "Success" || response.status == "OK",
-        "Expected success status, got: {}", response.status
+        "Expected success status, got: {}",
+        response.status
     );
-    
+
     if let Some(loaded) = response.number_loaded_rows {
         assert!(loaded > 0, "Expected loaded rows > 0, got: {loaded}");
     }
@@ -152,7 +153,7 @@ pub fn setup_tracing() {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"))
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
         )
         .init();
 }
@@ -165,7 +166,7 @@ mod tests {
     fn test_generate_csv_data() {
         let csv = generate_csv_data(3);
         let csv_str = std::str::from_utf8(&csv).unwrap();
-        
+
         assert!(csv_str.contains("id,name,value"));
         assert!(csv_str.contains("1,user_0,5"));
         assert!(csv_str.contains("3,user_2,25"));
@@ -175,7 +176,7 @@ mod tests {
     fn test_generate_json_data() {
         let json = generate_json_data(2);
         let json_str: Vec<serde_json::Value> = serde_json::from_slice(&json).unwrap();
-        
+
         assert_eq!(json_str.len(), 2);
         assert_eq!(json_str[0]["id"], 1);
         assert_eq!(json_str[1]["name"], "user_1");
@@ -185,7 +186,7 @@ mod tests {
     fn test_generate_test_label() {
         let label1 = generate_test_label("test");
         let label2 = generate_test_label("test");
-        
+
         assert!(label1.starts_with("test_"));
         assert_ne!(label1, label2); // Should be different due to timestamps
     }

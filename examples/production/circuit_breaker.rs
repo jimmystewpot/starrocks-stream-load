@@ -1,38 +1,38 @@
 //! # Circuit Breaker Pattern Example
 #![allow(clippy::print_stdout)]
-//! 
+//!
 //! This example demonstrates production-grade circuit breaker implementation for preventing
 //! cascading failures in `StarRocks` stream load operations.
-//! 
+//!
 //! ## What this example demonstrates:
 //! 1. Circuit breaker with three states: CLOSED, OPEN, HALF-OPEN
 //! 2. Automatic state transitions based on failure/success rates
 //! 3. Recovery timeout with configurable half-open testing
 //! 4. Thread-safe operations using atomic primitives
 //! 5. Integration with SDK operations and error tracking
-//! 
+//!
 //! ## Circuit Breaker States:
 //! - **CLOSED**: Normal operation, requests pass through, failures count against threshold
 //! - **OPEN**: Circuit is broken, fast-fail all requests, wait for recovery timeout
 //! - **HALF-OPEN**: Testing recovery, allow limited requests to test if service is healthy
-//! 
+//!
 //! ## Production implementation details:
 //! - **Failure threshold**: Number of failures before opening circuit (e.g., 5)
 //! - **Recovery timeout**: How long to wait before attempting recovery (e.g., 60 seconds)
 //! - **Success threshold**: How many successful requests needed to CLOSE circuit (e.g., 3)
 //! - **Request timeout**: Time limit for individual requests
-//! 
+//!
 //! ## Application layer pattern:
 //! This demonstrates that the SDK provides building blocks while the application layer
 //! implements circuit breaking for production resilience.
 
-use starrocks_stream_load::{
-    DataFormat, StreamLoadConfig, StreamLoadTableProperties, StreamLoadManager,
-};
 use bytes::Bytes;
+use starrocks_stream_load::{
+    DataFormat, StreamLoadConfig, StreamLoadManager, StreamLoadTableProperties,
+};
 use std::error::Error;
-use std::sync::atomic::{AtomicU64, AtomicU8, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU8, AtomicU64, Ordering};
 use std::time::Duration;
 
 /// Circuit breaker states
@@ -66,10 +66,10 @@ pub struct CircuitBreakerConfig {
 impl Default for CircuitBreakerConfig {
     fn default() -> Self {
         Self {
-            failure_threshold: 5,             // Open circuit after 5 failures
+            failure_threshold: 5,                     // Open circuit after 5 failures
             recovery_timeout: Duration::from_mins(1), // Wait 60 seconds before recovery
-            success_threshold: 3,             // Need 3 successful requests to close circuit
-            request_timeout: Duration::from_secs(30),  // Individual request timeout
+            success_threshold: 3,                     // Need 3 successful requests to close circuit
+            request_timeout: Duration::from_secs(30), // Individual request timeout
         }
     }
 }
@@ -98,7 +98,7 @@ impl CircuitBreaker {
     /// Check if requests can proceed through the circuit breaker
     pub fn can_proceed(&self) -> bool {
         let current_state = self.get_state();
-        
+
         match current_state {
             CircuitState::Open => {
                 // Check if recovery timeout has elapsed
@@ -112,17 +112,22 @@ impl CircuitBreaker {
                 } else {
                     Duration::ZERO
                 };
-                
+
                 if elapsed >= self.config.recovery_timeout {
                     // Transition to half-open for testing
                     self.transition_to(CircuitState::HalfOpen);
-                    tracing::info!("Circuit breaker transitioning to HALF-OPEN for recovery testing");
+                    tracing::info!(
+                        "Circuit breaker transitioning to HALF-OPEN for recovery testing"
+                    );
                     true
                 } else {
                     // Still in recovery period
                     let remaining = self.config.recovery_timeout.saturating_sub(elapsed);
                     let remaining_ms = remaining.as_millis();
-                    tracing::warn!("Circuit breaker OPEN, {}ms remaining in recovery", remaining_ms);
+                    tracing::warn!(
+                        "Circuit breaker OPEN, {}ms remaining in recovery",
+                        remaining_ms
+                    );
                     false
                 }
             }
@@ -133,7 +138,7 @@ impl CircuitBreaker {
     /// Record a successful operation
     pub fn record_success(&self) {
         let current_state = self.get_state();
-        
+
         match current_state {
             CircuitState::Closed => {
                 // Reset failure count on success
@@ -142,15 +147,21 @@ impl CircuitBreaker {
             CircuitState::HalfOpen => {
                 // Increment success count
                 let successes = self.success_count.fetch_add(1, Ordering::Relaxed) + 1;
-                
+
                 if successes >= self.config.success_threshold as u64 {
                     // Enough successes to close the circuit
                     self.transition_to(CircuitState::Closed);
                     self.success_count.store(0, Ordering::Relaxed);
-                    tracing::info!("Circuit breaker CLOSED after {} successful requests", successes);
+                    tracing::info!(
+                        "Circuit breaker CLOSED after {} successful requests",
+                        successes
+                    );
                 } else {
-                    tracing::info!("Circuit breaker HALF-OPEN: {}/{} successful requests", 
-                                  successes, self.config.success_threshold);
+                    tracing::info!(
+                        "Circuit breaker HALF-OPEN: {}/{} successful requests",
+                        successes,
+                        self.config.success_threshold
+                    );
                 }
             }
             CircuitState::Open => {
@@ -163,11 +174,11 @@ impl CircuitBreaker {
     /// Record a failed operation
     pub fn record_failure(&self) {
         let current_state = self.get_state();
-        
+
         match current_state {
             CircuitState::Closed => {
                 let failures = self.failure_count.fetch_add(1, Ordering::Relaxed) + 1;
-                
+
                 if failures >= self.config.failure_threshold {
                     // Threshold reached, open circuit
                     self.transition_to(CircuitState::Open);
@@ -178,20 +189,23 @@ impl CircuitBreaker {
                     self.last_failure_time.store(timestamp, Ordering::Release);
                     tracing::error!("Circuit breaker OPEN after {} failures", failures);
                 } else {
-                    tracing::warn!("Circuit breaker approaching threshold: {}/{} failures",
-                                  failures, self.config.failure_threshold);
+                    tracing::warn!(
+                        "Circuit breaker approaching threshold: {}/{} failures",
+                        failures,
+                        self.config.failure_threshold
+                    );
                 }
             }
             CircuitState::HalfOpen => {
                 // Failure during testing means stay open
-                    self.transition_to(CircuitState::Open);
-                    self.success_count.store(0, Ordering::Relaxed);
-                    let timestamp = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_secs();
-                    self.last_failure_time.store(timestamp, Ordering::Release);
-                    tracing::error!("Circuit reopen to OPEN due to failure during HALF-OPEN testing");
+                self.transition_to(CircuitState::Open);
+                self.success_count.store(0, Ordering::Relaxed);
+                let timestamp = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs();
+                self.last_failure_time.store(timestamp, Ordering::Release);
+                tracing::error!("Circuit reopen to OPEN due to failure during HALF-OPEN testing");
             }
             CircuitState::Open => {
                 // Already open, just update last failure time
@@ -217,8 +231,11 @@ impl CircuitBreaker {
     fn transition_to(&self, new_state: CircuitState) {
         let old_state = self.state.swap(new_state as u8, Ordering::Release);
         if old_state != new_state as u8 {
-            tracing::info!("Circuit breaker state transition: {} -> {}", 
-                         Self::state_to_string(old_state), new_state);
+            tracing::info!(
+                "Circuit breaker state transition: {} -> {}",
+                Self::state_to_string(old_state),
+                new_state
+            );
         }
     }
 
@@ -268,7 +285,7 @@ where
     if !circuit_breaker.can_proceed() {
         return Err(CircuitBreakerError::CircuitOpen);
     }
-    
+
     operation().await.map_err(CircuitBreakerError::from)
 }
 
@@ -307,9 +324,10 @@ fn generate_test_label(prefix: &str) -> String {
 fn assert_success_response(response: &starrocks_stream_load::StreamLoadResponse) {
     assert!(
         response.status == "Success" || response.status == "OK",
-        "Expected success status, got: {}", response.status
+        "Expected success status, got: {}",
+        response.status
     );
-    
+
     if let Some(loaded) = response.number_loaded_rows {
         assert!(loaded > 0, "Expected loaded rows > 0, got: {loaded}");
     }
@@ -325,14 +343,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // CONFIGURATION
     // =================================================================
     println!("📋 Step 1: Configuring circuit breaker...");
-    
+
     let config = CircuitBreakerConfig {
-        failure_threshold: 3,              // Open after 3 failures
-        recovery_timeout: Duration::from_secs(30),  // 30 second recovery
-        success_threshold: 2,              // Need 2 successes to close
+        failure_threshold: 3,                      // Open after 3 failures
+        recovery_timeout: Duration::from_secs(30), // 30 second recovery
+        success_threshold: 2,                      // Need 2 successes to close
         request_timeout: Duration::from_secs(10),
     };
-    
+
     let circuit_breaker = Arc::new(CircuitBreaker::new(config.clone()));
     println!("✓ Circuit breaker configured:");
     println!("  Failure threshold: {}", config.failure_threshold);
@@ -343,14 +361,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // STARROCKS SETUP
     // =================================================================
     println!("\n📋 Step 2: Setting up StarRocks manager...");
-    
+
     let stream_config = StreamLoadConfig::builder(
         vec!["http://127.0.0.1:8030".to_string()],
         "test_db".to_string(),
         "admin".to_string(),
     )
     .password("your_password")
-    .max_retries(0)  // We handle retries at application layer
+    .max_retries(0) // We handle retries at application layer
     .build();
 
     let properties = StreamLoadTableProperties::builder()
@@ -371,33 +389,40 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // =================================================================
     println!("\n📋 Demonstration 1: Failures trigger circuit breaker");
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    
+
     println!("Circuit state: {}", circuit_breaker.get_state());
-    
+
     // Simulate failures to trigger circuit breaker
     for i in 0..3 {
         let cb = circuit_breaker.clone();
         let manager = manager_ref.clone();
-        let data = Bytes::from(r#"id,name,value
+        let data = Bytes::from(
+            r#"id,name,value
 9999,BadUser,999
-"#);
-        
+"#,
+        );
+
         let result = safe_stream_load(cb, move || {
             let manager = manager.clone();
             let label = generate_test_label("fail_trigger");
             let data = data.clone();
-            
+
             async move {
                 // This will fail due to invalid data
                 manager.send_single_batch(&label, data).await
             }
-        }).await;
-        
+        })
+        .await;
+
         if let Err(CircuitBreakerError::OperationFailed(e)) = result {
             println!("  Attempt {}: Failed as expected - {}", i + 1, e);
         }
-        
-        println!("  Circuit state after attempt {}: {}", i + 1, circuit_breaker.get_state());
+
+        println!(
+            "  Circuit state after attempt {}: {}",
+            i + 1,
+            circuit_breaker.get_state()
+        );
         println!("  Failure count: {}", circuit_breaker.get_failure_count());
     }
 
@@ -406,22 +431,23 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // =================================================================
     println!("\n📋 Demonstration 2: Circuit blocks requests when OPEN");
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    
+
     let cb = circuit_breaker.clone();
     let manager = manager_ref.clone();
-    
+
     let result = safe_stream_load(cb, || {
         let manager = manager.clone();
         let label = generate_test_label("blocked_request");
-        let data = Bytes::from(r#"id,name,value
+        let data = Bytes::from(
+            r#"id,name,value
 1,NewUser,25
-"#);
-        
-        async move {
-            manager.send_single_batch(&label, data).await
-        }
-    }).await;
-    
+"#,
+        );
+
+        async move { manager.send_single_batch(&label, data).await }
+    })
+    .await;
+
     match result {
         Err(CircuitBreakerError::CircuitOpen) => {
             println!("✓ Request blocked as expected - circuit is OPEN");
@@ -430,7 +456,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             println!("✗ Unexpected success - circuit should be OPEN");
         }
         Err(CircuitBreakerError::OperationFailed(e)) => {
-                println!("✗ Unexpected operation failure: {e}");
+            println!("✗ Unexpected operation failure: {e}");
         }
     }
 
@@ -439,71 +465,86 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // =================================================================
     println!("\n📋 Demonstration 3: Recovery timeout and half-open testing");
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    
+
     // For demonstration, manually reset circuit breaker
     println!("Resetting circuit breaker for demonstration...");
     circuit_breaker.reset();
-    
+
     // Simulate failures again
     for _i in 0..3 {
         let cb = circuit_breaker.clone();
         let manager = manager_ref.clone();
-        let data = Bytes::from(r#"id,name,value
+        let data = Bytes::from(
+            r#"id,name,value
 9999,BadUser,999
-"#);
-        
+"#,
+        );
+
         let _ = safe_stream_load(cb, || {
             let manager = manager.clone();
             let label = generate_test_label("recovery_fail");
             let data = data.clone();
-            
-            async move {
-                manager.send_single_batch(&label, data).await
-            }
-        }).await;
+
+            async move { manager.send_single_batch(&label, data).await }
+        })
+        .await;
     }
-    
-    println!("Circuit state after failures: {}", circuit_breaker.get_state());
-    
+
+    println!(
+        "Circuit state after failures: {}",
+        circuit_breaker.get_state()
+    );
+
     // Wait for recovery timeout (with shortened duration for demo)
     let recovery_time = Duration::from_secs(2); // Short for demo
-    println!("Waiting {} seconds for recovery timeout...", recovery_time.as_secs());
+    println!(
+        "Waiting {} seconds for recovery timeout...",
+        recovery_time.as_secs()
+    );
     tokio::time::sleep(recovery_time).await;
-    
+
     // Manually adjust last failure time to simulate recovery timeout
     let timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs()
         .saturating_sub(35);
-    circuit_breaker.last_failure_time.store(timestamp, Ordering::Release);
-    
-    println!("Circuit state after recovery timeout: {}", circuit_breaker.get_state());
+    circuit_breaker
+        .last_failure_time
+        .store(timestamp, Ordering::Release);
+
+    println!(
+        "Circuit state after recovery timeout: {}",
+        circuit_breaker.get_state()
+    );
 
     // =================================================================
     // DEMONSTRATION 4: Successful recovery closes circuit
     // =================================================================
     println!("\n📋 Demonstration 4: Successful recovery closes circuit");
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    
+
     // Perform successful operations to close circuit
     for i in 0..2 {
         let cb = circuit_breaker.clone();
         let manager = manager_ref.clone();
-        let data = Bytes::from(format!(r#"id,name,value
+        let data = Bytes::from(format!(
+            r#"id,name,value
 {},RecoveryUser,{}
-"#, i + 100, (i + 100) * 2));
-        
+"#,
+            i + 100,
+            (i + 100) * 2
+        ));
+
         let result = safe_stream_load(cb.clone(), move || {
             let manager = manager.clone();
             let label = generate_test_label("recovery_success");
             let data = data.clone();
-            
-            async move {
-                manager.send_single_batch(&label, data).await
-            }
-        }).await;
-        
+
+            async move { manager.send_single_batch(&label, data).await }
+        })
+        .await;
+
         match result {
             Ok(response) => {
                 cb.record_success();

@@ -192,7 +192,7 @@ impl StarRocksHttpClient {
     }
 
     /// Executes a GET request to the specified URL.
- ///
+    ///
     /// # Errors
     ///
     /// Returns an error if:

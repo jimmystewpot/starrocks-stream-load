@@ -1,16 +1,16 @@
 //! # Transaction State Management Example
 #![allow(clippy::print_stdout)]
-//! 
+//!
 //! This example demonstrates production-grade transaction state management for `StarRocks`
 //! 2PC stream load operations, including recovery and consistent state tracking.
-//! 
+//!
 //! ## What this example demonstrates:
 //! 1. Transaction state machine with proper state transitions
 //! 2. Persistent tracking of transaction states in memory
 //! 3. Error recovery and transaction rollback procedures
 //! 4. Timeout handling for stuck transactions
 //! 5. Concurrent transaction management with conflict detection
-//! 
+//!
 //! ## Transaction state lifecycle:
 //! - **`NotStarted`**: Transaction not yet initialized
 //! - **`Begun(txn_id)`**: Transaction started with backend ID
@@ -19,7 +19,7 @@
 //! - **Committed**: Transaction successfully committed
 //! - **`RolledBack`**: Transaction was rolled back
 //! - **Failed(reason)**: Transaction failed with specific reason
-//! 
+//!
 //! ## Production implementation details:
 //! - **Thread-safe state management**: Arc<Mutex<HashMap>> for concurrent access
 //! - **State validation**: Ensure transitions only occur from valid states
@@ -27,10 +27,10 @@
 //! - **Timeout handling**: Automatic cleanup of stuck transactions
 //! - **Conflict detection**: Prevent duplicate transaction labels
 
-use starrocks_stream_load::{
-    DataFormat, StreamLoadConfig, StreamLoadTableProperties, StreamLoadManager,
-};
 use bytes::Bytes;
+use starrocks_stream_load::{
+    DataFormat, StreamLoadConfig, StreamLoadManager, StreamLoadTableProperties,
+};
 use std::collections::HashMap;
 use std::error::Error;
 use std::sync::{Arc, Mutex};
@@ -40,12 +40,12 @@ use std::time::{Duration, Instant};
 #[derive(Debug, Clone, PartialEq)]
 pub enum TransactionState {
     NotStarted,
-    Begun(i64),               // Transaction ID from StarRocks
-    Loaded,                   // Data loaded but not prepared
-    Prepared,                 // Transaction prepared for commit
-    Committed,                // Transaction successfully committed
-    RolledBack,               // Transaction explicitly rolled back
-    Failed(String),           // Transaction failed with reason
+    Begun(i64),     // Transaction ID from StarRocks
+    Loaded,         // Data loaded but not prepared
+    Prepared,       // Transaction prepared for commit
+    Committed,      // Transaction successfully committed
+    RolledBack,     // Transaction explicitly rolled back
+    Failed(String), // Transaction failed with reason
 }
 
 impl std::fmt::Display for TransactionState {
@@ -150,7 +150,9 @@ impl TransactionManager {
         table: String,
     ) -> Result<i64, TransactionError> {
         {
-            let mut transactions = self.transactions.lock()
+            let mut transactions = self
+                .transactions
+                .lock()
                 .map_err(|e| TransactionError::InternalLockError(e.to_string()))?;
 
             // Check for duplicate label
@@ -166,9 +168,11 @@ impl TransactionManager {
         // Begin transaction with StarRocks
         match manager.begin_transaction(&label).await {
             Ok(txn_id) => {
-                let mut transactions = self.transactions.lock()
+                let mut transactions = self
+                    .transactions
+                    .lock()
                     .map_err(|e| TransactionError::InternalLockError(e.to_string()))?;
-                
+
                 if let Some(metadata) = transactions.get_mut(&label) {
                     metadata.state = TransactionState::Begun(txn_id);
                     metadata.last_updated = Instant::now();
@@ -178,9 +182,11 @@ impl TransactionManager {
                 Ok(txn_id)
             }
             Err(error) => {
-                let mut transactions = self.transactions.lock()
+                let mut transactions = self
+                    .transactions
+                    .lock()
                     .map_err(|e| TransactionError::InternalLockError(e.to_string()))?;
-                
+
                 if let Some(metadata) = transactions.get_mut(&label) {
                     metadata.state = TransactionState::Failed(error.to_string());
                     metadata.error_details = Some(error.to_string());
@@ -209,23 +215,35 @@ impl TransactionManager {
     ) -> Result<(), TransactionError> {
         // Validate current state
         {
-            let transactions = self.transactions.lock()
+            let transactions = self
+                .transactions
+                .lock()
                 .map_err(|e| TransactionError::InternalLockError(e.to_string()))?;
-            
+
             if let Some(metadata) = transactions.get(&label)
-                && !matches!(metadata.state, TransactionState::Begun(_) | TransactionState::Loaded) {
-                return Err(TransactionError::InvalidStateTransition(
-                    format!("Cannot load data in state: {}", metadata.state)
-                ));
+                && !matches!(
+                    metadata.state,
+                    TransactionState::Begun(_) | TransactionState::Loaded
+                )
+            {
+                return Err(TransactionError::InvalidStateTransition(format!(
+                    "Cannot load data in state: {}",
+                    metadata.state
+                )));
             }
         }
 
         // Load data with StarRocks
-        match manager.load_transaction_data(&label, &database, &table, sequence, data).await {
+        match manager
+            .load_transaction_data(&label, &database, &table, sequence, data)
+            .await
+        {
             Ok(_) => {
-                let mut transactions = self.transactions.lock()
+                let mut transactions = self
+                    .transactions
+                    .lock()
                     .map_err(|e| TransactionError::InternalLockError(e.to_string()))?;
-                
+
                 if let Some(metadata) = transactions.get_mut(&label) {
                     metadata.state = TransactionState::Loaded;
                     metadata.rows_affected += 1; // Simplified tracking
@@ -254,9 +272,11 @@ impl TransactionManager {
     ) -> Result<(), TransactionError> {
         // Validate and update state
         {
-            let transactions = self.transactions.lock()
+            let transactions = self
+                .transactions
+                .lock()
                 .map_err(|e| TransactionError::InternalLockError(e.to_string()))?;
-            
+
             if let Some(metadata) = transactions.get(&label) {
                 match &metadata.state {
                     TransactionState::Begun(_) | TransactionState::Loaded => {
@@ -266,9 +286,10 @@ impl TransactionManager {
                         return Err(TransactionError::AlreadyPrepared(label));
                     }
                     other => {
-                        return Err(TransactionError::InvalidStateTransition(
-                            format!("Cannot prepare in state: {}", other)
-                        ));
+                        return Err(TransactionError::InvalidStateTransition(format!(
+                            "Cannot prepare in state: {}",
+                            other
+                        )));
                     }
                 }
             }
@@ -277,9 +298,11 @@ impl TransactionManager {
         // Prepare transaction with StarRocks
         match manager.prepare_transaction(&label).await {
             Ok(_) => {
-                let mut transactions = self.transactions.lock()
+                let mut transactions = self
+                    .transactions
+                    .lock()
                     .map_err(|e| TransactionError::InternalLockError(e.to_string()))?;
-                
+
                 if let Some(metadata) = transactions.get_mut(&label) {
                     metadata.state = TransactionState::Prepared;
                     metadata.last_updated = Instant::now();
@@ -307,26 +330,36 @@ impl TransactionManager {
     ) -> Result<(), TransactionError> {
         // Auto-prepare if needed
         {
-            let transactions = self.transactions.lock()
+            let transactions = self
+                .transactions
+                .lock()
                 .map_err(|e| TransactionError::InternalLockError(e.to_string()))?;
-            
+
             if let Some(metadata) = transactions.get(&label) {
-                if matches!(metadata.state, TransactionState::Begun(_) | TransactionState::Loaded) {
-                }
+                if matches!(
+                    metadata.state,
+                    TransactionState::Begun(_) | TransactionState::Loaded
+                ) {}
             }
         }
 
-        // We must check the state again and potentially prepare. 
+        // We must check the state again and potentially prepare.
         // To avoid holding lock across await, we call prepare_transaction which handles its own locking.
         // But we only want to call it if the state was Begun or Loaded.
         // So let's use a helper or just check again.
-        
+
         // Re-check state to see if we need to auto-prepare
         let needs_prepare = {
-            let transactions = self.transactions.lock()
+            let transactions = self
+                .transactions
+                .lock()
                 .map_err(|e| TransactionError::InternalLockError(e.to_string()))?;
-            transactions.get(&label)
-                .is_some_and(|m| matches!(m.state, TransactionState::Begun(_) | TransactionState::Loaded))
+            transactions.get(&label).is_some_and(|m| {
+                matches!(
+                    m.state,
+                    TransactionState::Begun(_) | TransactionState::Loaded
+                )
+            })
         };
 
         if needs_prepare {
@@ -336,9 +369,11 @@ impl TransactionManager {
         // Commit transaction with StarRocks
         match manager.commit_transaction(&label).await {
             Ok(_) => {
-                let mut transactions = self.transactions.lock()
+                let mut transactions = self
+                    .transactions
+                    .lock()
                     .map_err(|e| TransactionError::InternalLockError(e.to_string()))?;
-                
+
                 if let Some(metadata) = transactions.get_mut(&label) {
                     metadata.state = TransactionState::Committed;
                     metadata.last_updated = Instant::now();
@@ -368,9 +403,11 @@ impl TransactionManager {
         // Rollback transaction with StarRocks
         match manager.rollback_transaction(&label).await {
             Ok(_) => {
-                let mut transactions = self.transactions.lock()
+                let mut transactions = self
+                    .transactions
+                    .lock()
                     .map_err(|e| TransactionError::InternalLockError(e.to_string()))?;
-                
+
                 if let Some(metadata) = transactions.get_mut(&label) {
                     metadata.state = TransactionState::RolledBack;
                     metadata.last_updated = Instant::now();
@@ -381,7 +418,10 @@ impl TransactionManager {
             }
             Err(error) => {
                 // Even if rollback fails, mark as rolled back locally
-                self.mark_transaction_rolled_back(label.clone(), format!("Rollback failed: {}", error));
+                self.mark_transaction_rolled_back(
+                    label.clone(),
+                    format!("Rollback failed: {}", error),
+                );
                 Err(TransactionError::RollbackFailed(error.to_string()))
             }
         }
@@ -390,7 +430,7 @@ impl TransactionManager {
     /// Mark transaction as failed
     fn mark_transaction_failed(&self, label: String, reason: String) {
         let mut transactions = self.transactions.lock().unwrap();
-        
+
         if let Some(metadata) = transactions.get_mut(&label) {
             metadata.state = TransactionState::Failed(reason.clone());
             metadata.error_details = Some(reason);
@@ -401,7 +441,7 @@ impl TransactionManager {
     /// Mark transaction as rolled back
     fn mark_transaction_rolled_back(&self, label: String, reason: String) {
         let mut transactions = self.transactions.lock().unwrap();
-        
+
         if let Some(metadata) = transactions.get_mut(&label) {
             metadata.state = TransactionState::RolledBack;
             metadata.error_details = Some(reason);
@@ -434,16 +474,21 @@ impl TransactionManager {
     /// # Panics
     ///
     /// Panics if the internal lock is poisoned.
-    pub async fn recover_stuck_transactions(&self, manager: &StreamLoadManager) -> Vec<TransactionMetadata> {
+    pub async fn recover_stuck_transactions(
+        &self,
+        manager: &StreamLoadManager,
+    ) -> Vec<TransactionMetadata> {
         let mut stuck_transactions = Vec::new();
-        
+
         {
             let transactions = self.transactions.lock().unwrap();
-            
+
             for metadata in transactions.values() {
                 if metadata.last_updated.elapsed() > self.config.transaction_timeout {
                     match &metadata.state {
-                        TransactionState::Begun(_) | TransactionState::Loaded | TransactionState::Prepared => {
+                        TransactionState::Begun(_)
+                        | TransactionState::Loaded
+                        | TransactionState::Prepared => {
                             stuck_transactions.push(metadata.clone());
                         }
                         _ => {}
@@ -454,13 +499,24 @@ impl TransactionManager {
 
         // Attempt rollback for stuck transactions
         for metadata in stuck_transactions.clone() {
-            tracing::warn!("Recovering stuck transaction: '{}' (state: {}, timeout: {}ms)",
-                          metadata.label, metadata.state, metadata.duration_since_update().as_millis());
-            
+            tracing::warn!(
+                "Recovering stuck transaction: '{}' (state: {}, timeout: {}ms)",
+                metadata.label,
+                metadata.state,
+                metadata.duration_since_update().as_millis()
+            );
+
             // Auto-rollback stuck transactions if enabled
             if self.config.enable_auto_recovery
-                && let Err(e) = self.rollback_transaction(metadata.label.clone(), manager).await {
-                tracing::error!("Failed to rollback stuck transaction '{}': {}", metadata.label, e);
+                && let Err(e) = self
+                    .rollback_transaction(metadata.label.clone(), manager)
+                    .await
+            {
+                tracing::error!(
+                    "Failed to rollback stuck transaction '{}': {}",
+                    metadata.label,
+                    e
+                );
             }
         }
 
@@ -470,16 +526,14 @@ impl TransactionManager {
     /// Clean up completed transactions
     pub fn cleanup_completed_transactions(&self, max_age: Duration) -> usize {
         let mut transactions = self.transactions.lock().unwrap();
-        
+
         let labels_to_remove: Vec<String> = transactions
             .iter()
-            .filter(|(_, metadata)| {
-                match &metadata.state {
-                    TransactionState::Committed | TransactionState::RolledBack => {
-                        metadata.last_updated.elapsed() > max_age
-                    }
-                    _ => false,
+            .filter(|(_, metadata)| match &metadata.state {
+                TransactionState::Committed | TransactionState::RolledBack => {
+                    metadata.last_updated.elapsed() > max_age
                 }
+                _ => false,
             })
             .map(|(label, _)| label.clone())
             .collect();
@@ -499,12 +553,12 @@ impl TransactionManager {
     /// Panics if the internal lock is poisoned.
     pub fn generate_status_report(&self) -> TransactionStatusReport {
         let transactions = self.transactions.lock().unwrap();
-        
+
         let mut report = TransactionStatusReport::default();
-        
+
         for metadata in transactions.values() {
             report.total_transactions += 1;
-            
+
             match &metadata.state {
                 TransactionState::NotStarted => report.not_started += 1,
                 TransactionState::Begun(_) => report.begun += 1,
@@ -517,7 +571,13 @@ impl TransactionManager {
 
             // Track stuck transactions
             if metadata.last_updated.elapsed() > self.config.transaction_timeout
-                && matches!(metadata.state, TransactionState::Begun(_) | TransactionState::Loaded | TransactionState::Prepared) {
+                && matches!(
+                    metadata.state,
+                    TransactionState::Begun(_)
+                        | TransactionState::Loaded
+                        | TransactionState::Prepared
+                )
+            {
                 report.stuck_transactions.push(metadata.clone());
             }
         }
@@ -600,35 +660,35 @@ async fn main() -> Result<(), Box<dyn Error>> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"))
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
         )
         .init();
-        
+
     println!("🚀 StarRocks Transaction State Management Example");
     println!("═══════════════════════════════════════════════════\n");
-    
+
     // =================================================================
     // TRANSACTION MANAGER SETUP
     // =================================================================
     println!("📋 Step 1: Configuring transaction manager...");
-    
+
     let config = TransactionManagerConfig {
         transaction_timeout: Duration::from_secs(120), // 2 minutes for demo
         max_concurrent_transactions: 10,
         enable_auto_recovery: true,
     };
-    
+
     let txn_manager = TransactionManager::new(config.clone());
     println!("✓ Transaction manager configured:");
     println!("  Timeout: {}s", config.transaction_timeout.as_secs());
     println!("  Max concurrent: {}", config.max_concurrent_transactions);
     println!("  Auto recovery: {}", config.enable_auto_recovery);
-    
+
     // =================================================================
     // STARROCKS SETUP
     // =================================================================
     println!("\n📋 Step 2: Setting up StarRocks manager...");
-    
+
     let stream_config = StreamLoadConfig::builder(
         vec!["http://127.0.0.1:8030".to_string()],
         "test_db".to_string(),
@@ -638,7 +698,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     .enable_transaction(true)
     .max_retries(2)
     .build();
-    
+
     let properties = StreamLoadTableProperties::builder()
         .table("txn_state_users")
         .format(DataFormat::CSV)
@@ -647,131 +707,194 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .columns("id,name,value")
         .skip_header(0)
         .build();
-    
+
     let manager = StreamLoadManager::new(stream_config, properties)?;
     println!("✓ StreamLoadManager created with transaction support");
-    
+
     // =================================================================
     // DEMONSTRATION 1: Full transaction lifecycle
     // =================================================================
     println!("\n📋 Demonstration 1: Complete transaction lifecycle");
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    
+
     let label = generate_test_label("lifecycle_txn");
     println!("Starting transaction: {label}");
-    
+
     // Step 1: Begin transaction
-    let txn_id = txn_manager.begin_transaction(label.clone(), &manager, "txn_state_users".to_string()).await?;
+    let txn_id = txn_manager
+        .begin_transaction(label.clone(), &manager, "txn_state_users".to_string())
+        .await?;
     println!("✓ Transaction begun with ID: {txn_id}");
-    println!("  Current state: {}", txn_manager.get_transaction_status(&label).unwrap().state);
-    
+    println!(
+        "  Current state: {}",
+        txn_manager.get_transaction_status(&label).unwrap().state
+    );
+
     // Step 2: Load data
     let chunk1 = Bytes::from("1,LifecycleUser1,25\n2,LifecycleUser2,30\n");
-    txn_manager.load_data(label.clone(), &manager, "test_db".to_string(), "txn_state_users".to_string(), 0, chunk1).await?;
+    txn_manager
+        .load_data(
+            label.clone(),
+            &manager,
+            "test_db".to_string(),
+            "txn_state_users".to_string(),
+            0,
+            chunk1,
+        )
+        .await?;
     println!("✓ Data chunk 0 loaded");
-    println!("  Current state: {}", txn_manager.get_transaction_status(&label).unwrap().state);
-    
+    println!(
+        "  Current state: {}",
+        txn_manager.get_transaction_status(&label).unwrap().state
+    );
+
     // Step 3: Prepare transaction
-    txn_manager.prepare_transaction(label.clone(), &manager).await?;
+    txn_manager
+        .prepare_transaction(label.clone(), &manager)
+        .await?;
     println!("✓ Transaction prepared");
-    println!("  Current state: {}", txn_manager.get_transaction_status(&label).unwrap().state);
-    
+    println!(
+        "  Current state: {}",
+        txn_manager.get_transaction_status(&label).unwrap().state
+    );
+
     // Step 4: Commit transaction
-    txn_manager.commit_transaction(label.clone(), &manager).await?;
+    txn_manager
+        .commit_transaction(label.clone(), &manager)
+        .await?;
     println!("✓ Transaction committed");
     let final_state = txn_manager.get_transaction_status(&label).unwrap();
     println!("  Final state: {}", final_state.state);
-    
+
     // =================================================================
     // DEMONSTRATION 2: Transaction rollback on error
     // =================================================================
     println!("\n📋 Demonstration 2: Transaction rollback on error");
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    
+
     let error_label = generate_test_label("rollback_txn");
     println!("Starting transaction: {error_label}");
-    
-    let txn_id = txn_manager.begin_transaction(error_label.clone(), &manager, "txn_state_users".to_string()).await?;
+
+    let txn_id = txn_manager
+        .begin_transaction(error_label.clone(), &manager, "txn_state_users".to_string())
+        .await?;
     println!("✓ Transaction begun with ID: {txn_id}");
-    
+
     // Load some data
     let chunk = Bytes::from("1,ErrorUser,25\n");
-    txn_manager.load_data(error_label.clone(), &manager, "test_db".to_string(), "txn_state_users".to_string(), 0, chunk).await?;
+    txn_manager
+        .load_data(
+            error_label.clone(),
+            &manager,
+            "test_db".to_string(),
+            "txn_state_users".to_string(),
+            0,
+            chunk,
+        )
+        .await?;
     println!("✓ Data loaded into transaction");
-    
+
     // Force rollback for demonstration
     println!("Rolling back transaction due to simulated error...");
-    txn_manager.rollback_transaction(error_label.clone(), &manager).await?;
+    txn_manager
+        .rollback_transaction(error_label.clone(), &manager)
+        .await?;
     println!("✓ Transaction rolled back");
     let final_state = txn_manager.get_transaction_status(&error_label).unwrap();
     println!("  Final state: {}", final_state.state);
-    
+
     // =================================================================
     // DEMONSTRATION 3: Auto-prepare before commit
     // =================================================================
     println!("\n📋 Demonstration 3: Auto-prepare before commit");
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    
+
     let auto_label = generate_test_label("auto_prepare_txn");
     println!("Starting transaction: {auto_label}");
-    
-    let txn_id = txn_manager.begin_transaction(auto_label.clone(), &manager, "txn_state_users".to_string()).await?;
+
+    let txn_id = txn_manager
+        .begin_transaction(auto_label.clone(), &manager, "txn_state_users".to_string())
+        .await?;
     println!("✓ Transaction begun with ID: {txn_id}");
-    
+
     // Load data
     let chunk = Bytes::from("1,AutoPrepareUser,35\n");
-    txn_manager.load_data(auto_label.clone(), &manager, "test_db".to_string(), "txn_state_users".to_string(), 0, chunk).await?;
+    txn_manager
+        .load_data(
+            auto_label.clone(),
+            &manager,
+            "test_db".to_string(),
+            "txn_state_users".to_string(),
+            0,
+            chunk,
+        )
+        .await?;
     println!("✓ Data loaded (transaction in LOADED state)");
-    
+
     // Commit directly - should auto-prepare
     println!("Committing directly (auto-prepare will be triggered)...");
-    txn_manager.commit_transaction(auto_label.clone(), &manager).await?;
+    txn_manager
+        .commit_transaction(auto_label.clone(), &manager)
+        .await?;
     println!("✓ Transaction committed successfully");
     let final_state = txn_manager.get_transaction_status(&auto_label).unwrap();
     println!("  Final state: {}", final_state.state);
-    
+
     // =================================================================
     // DEMONSTRATION 4: Concurrent transaction handling
     // =================================================================
     println!("\n📋 Demonstration 4: Concurrent transaction management");
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    
+
     let mut handles = vec![];
     let txn_manager_ref = std::sync::Arc::new(txn_manager);
     let manager_ref = Arc::new(manager);
-    
+
     for i in 0..3 {
         let txn_manager = txn_manager_ref.clone();
         let manager = manager_ref.clone();
         let label = generate_test_label(&format!("concurrent_txn_{i}"));
         let data = Bytes::from(format!("1,ConcurrentUser{},{}\n", i, (i + 1) * 10));
-        
+
         let handle = tokio::spawn(async move {
             // Begin transaction
-            let _txn_id = txn_manager.begin_transaction(label.clone(), &manager, "txn_state_users".to_string()).await?;
-            
+            let _txn_id = txn_manager
+                .begin_transaction(label.clone(), &manager, "txn_state_users".to_string())
+                .await?;
+
             // Load data
-            txn_manager.load_data(label.clone(), &manager, "test_db".to_string(), "txn_state_users".to_string(), 0, data).await?;
-            
+            txn_manager
+                .load_data(
+                    label.clone(),
+                    &manager,
+                    "test_db".to_string(),
+                    "txn_state_users".to_string(),
+                    0,
+                    data,
+                )
+                .await?;
+
             // Commit transaction
-            txn_manager.commit_transaction(label.clone(), &manager).await?;
-            
+            txn_manager
+                .commit_transaction(label.clone(), &manager)
+                .await?;
+
             Ok::<_, TransactionError>(())
         });
-        
+
         handles.push(handle);
     }
-    
+
     let results = futures::future::join_all(handles).await;
     let successful_txns = results.iter().filter(|r| r.is_ok()).count();
     println!("✓ Completed {successful_txns} out of 3 concurrent transactions");
-    
+
     // =================================================================
     // DEMONSTRATION 5: Status reporting and cleanup
     // =================================================================
     println!("\n📋 Demonstration 5: Status reporting and cleanup");
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    
+
     let status_report = txn_manager_ref.generate_status_report();
     println!("Transaction Status Report:");
     println!("  Total transactions: {}", status_report.total_transactions);
@@ -782,14 +905,19 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("  Committed: {}", status_report.committed);
     println!("  Rolled back: {}", status_report.rolled_back);
     println!("  Failed: {}", status_report.failed);
-    println!("  Stuck transactions: {}", status_report.stuck_transactions.len());
-    
+    println!(
+        "  Stuck transactions: {}",
+        status_report.stuck_transactions.len()
+    );
+
     // Cleanup completed transactions
     let cleaned = txn_manager_ref.cleanup_completed_transactions(Duration::from_secs(0));
     println!("\n✓ Cleaned up {cleaned} completed transactions");
-    
+
     println!("\n✅ Transaction state management demonstration completed successfully!");
-    println!("   This system provides complete transaction lifecycle control for production reliability");
-    
+    println!(
+        "   This system provides complete transaction lifecycle control for production reliability"
+    );
+
     Ok(())
 }
