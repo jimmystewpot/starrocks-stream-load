@@ -1,6 +1,24 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
+/// Supported data formats for `StarRocks` stream load operations.
+///
+/// Each format is serialized as an uppercase string when sent to `StarRocks`.
+///
+/// # Variants
+///
+/// * `CSV` - Comma-separated values format
+/// * `JSON` - JSON format (arrays or objects)
+/// * `ARROW` - Apache Arrow format
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use starrocks_stream_load::DataFormat;
+///
+/// let format = DataFormat::CSV;
+/// // Serializes to "CSV" when sent to StarRocks
+/// ```
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum DataFormat {
@@ -9,6 +27,46 @@ pub enum DataFormat {
     ARROW,
 }
 
+/// Main configuration for `StarRocks` stream load connections.
+///
+/// This struct contains all settings needed to establish a connection to
+/// `StarRocks` and configure data loading behavior. Use [`StreamLoadConfig::builder`]
+/// to create instances with the builder pattern.
+///
+/// # Fields
+///
+/// * `load_urls` - List of `StarRocks` Frontend URLs for load balancing
+/// * `database` - Target database name
+/// * `username` - Authentication username
+/// * `password` - Optional authentication password
+/// * `connect_timeout` - Connection establishment timeout
+/// * `request_timeout` - Request completion timeout
+/// * `max_retries` - Maximum number of retry attempts for failed requests
+/// * `retry_interval` - Delay between retry attempts
+/// * `publish_timeout` - Optional timeout for transaction publishing
+/// * `enable_transaction` - Enable V2 API (2PC transactions)
+/// * `enable_multi_table_transaction` - Enable multi-table transaction support
+/// * `label_prefix` - Prefix for automatically generated transaction labels
+/// * `sanitize_error_log` - Automatically sanitize sensitive information from error logs
+/// * `chunk_limit` - Maximum size for data chunks (in bytes)
+/// * `max_buffer_rows` - Maximum number of rows to buffer before flushing
+/// * `scanning_frequency_ms` - Frequency for scanning completed jobs (milliseconds)
+/// * `io_thread_count` - Number of threads for IO operations
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use starrocks_stream_load::StreamLoadConfig;
+///
+/// let config = StreamLoadConfig::builder(
+///     vec!["http://127.0.0.1:8030".to_string()],
+///     "my_database".to_string(),
+///     "admin".to_string(),
+/// )
+/// .password("your_password")
+/// .enable_transaction(true)
+/// .build();
+/// ```
 #[derive(Clone, Debug)]
 pub struct StreamLoadConfig {
     pub load_urls: Vec<String>,
@@ -31,6 +89,29 @@ pub struct StreamLoadConfig {
 }
 
 impl StreamLoadConfig {
+    /// Creates a new [`StreamLoadConfigBuilder`] with the required parameters.
+    ///
+    /// # Arguments
+    ///
+    /// * `load_urls` - List of `StarRocks` Frontend URLs for load balancing
+    /// * `database` - Target database name
+    /// * `username` - Authentication username
+    ///
+    /// # Returns
+    ///
+    /// A builder instance that can be used to configure optional parameters.
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// use starrocks_stream_load::StreamLoadConfig;
+    ///
+    /// let builder = StreamLoadConfig::builder(
+    ///     vec!["http://127.0.0.1:8030".to_string()],
+    ///     "my_database".to_string(),
+    ///     "admin".to_string(),
+    /// );
+    /// ```
     #[must_use]
     pub fn builder(
         load_urls: Vec<String>,
@@ -41,6 +122,29 @@ impl StreamLoadConfig {
     }
 }
 
+/// Builder for creating [`StreamLoadConfig`] instances.
+///
+/// This builder provides a fluent API for configuring all optional parameters
+/// while ensuring that required parameters are provided during construction.
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use starrocks_stream_load::StreamLoadConfig;
+/// use std::time::Duration;
+///
+/// let config = StreamLoadConfig::builder(
+///     vec!["http://127.0.0.1:8030".to_string()],
+///     "my_database".to_string(),
+///     "admin".to_string(),
+/// )
+/// .password("your_password")
+/// .connect_timeout(Duration::from_secs(30))
+/// .request_timeout(Duration::from_secs(600))
+/// .max_retries(3)
+/// .enable_transaction(true)
+/// .build();
+/// ```
 pub struct StreamLoadConfigBuilder {
     load_urls: Vec<String>,
     database: String,
@@ -182,28 +286,65 @@ impl StreamLoadConfigBuilder {
 
 #[derive(Clone, Debug, Default)]
 pub struct StreamLoadTableProperties {
+    /// Target database name (optional if specified in config)
     pub database: Option<String>,
+    /// Target table name
     pub table: Option<String>,
+    /// Data format (CSV, JSON, or ARROW)
     pub format: Option<DataFormat>,
+    /// Column separator for CSV files
     pub column_separator: Option<String>,
+    /// Row delimiter (default: \\n)
     pub row_delimiter: Option<String>,
+    /// Column definition string (e.g., "id,name,age")
     pub columns: Option<String>,
+    /// JSON path expression for nested JSON data
     pub jsonpaths: Option<String>,
+    /// Strip outer array before parsing JSON
     pub strip_outer_array: Option<bool>,
+    /// Ignore JSON size validation
     pub ignore_json_size: Option<bool>,
+    /// Maximum allowed filter ratio (0.0 to 1.0)
     pub max_filter_ratio: Option<f64>,
+    /// Enable strict mode for data validation
     pub strict_mode: Option<bool>,
+    /// Request timeout in seconds
     pub timeout: Option<u32>,
+    /// Compression algorithm (e.g., "gzip", "lz4")
     pub compression: Option<String>,
+    /// Number of header lines to skip
     pub skip_header: Option<u32>,
+    /// WHERE clause for data filtering
     pub where_clause: Option<String>,
+    /// Target partitions (comma-separated)
     pub partitions: Option<String>,
+    /// Enable negative import for delete operations
     pub negative: Option<bool>,
+    /// Timezone for timestamp columns
     pub timezone: Option<String>,
+    /// Custom HTTP headers to send with requests
     pub custom_headers: HashMap<String, String>,
 }
 
 impl StreamLoadTableProperties {
+    /// Creates a new builder for [`StreamLoadTableProperties`].
+    ///
+    /// # Returns
+    ///
+    /// A builder with all fields set to their defaults.
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// use starrocks_stream_load::{DataFormat, StreamLoadTableProperties};
+    ///
+    /// let properties = StreamLoadTableProperties::builder()
+    ///     .table("my_table")
+    ///     .format(DataFormat::CSV)
+    ///     .column_separator(",")
+    ///     .columns("id,name,age")
+    ///     .build();
+    /// ```
     #[must_use]
     pub fn builder() -> StreamLoadTablePropertiesBuilder {
         StreamLoadTablePropertiesBuilder::default()

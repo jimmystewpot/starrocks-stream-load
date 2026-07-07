@@ -7,12 +7,90 @@ use crate::error::{Error, Result};
 use crate::http::StarRocksHttpClient;
 use crate::types::StreamLoadResponse;
 
+/// Main manager for `StarRocks` stream load operations.
+///
+/// This struct provides the primary interface for both V1 (Direct Load) and V2 (2PC Transaction)
+/// APIs, handling connection management, retry logic, and 307 redirect interception.
+///
+/// # Creating a Manager
+///
+/// ```rust,no_run
+/// use starrocks_stream_load::{DataFormat, StreamLoadConfig, StreamLoadManager, StreamLoadTableProperties};
+///
+/// let config = StreamLoadConfig::builder(
+///     vec!["http://127.0.0.1:8030".to_string()],
+///     "my_database".to_string(),
+///     "admin".to_string(),
+/// )
+/// .password("your_password")
+/// .build();
+///
+/// let properties = StreamLoadTableProperties::builder()
+///     .table("my_table")
+///     .format(DataFormat::CSV)
+///     .column_separator(",")
+///     .build();
+///
+/// let manager = StreamLoadManager::new(config, properties)?;
+/// ```
+///
+/// # Thread Safety
+///
+/// The manager can be safely shared across threads using `Arc`. All HTTP operations
+/// are performed asynchronously and are thread-safe.
+///
+/// # Connection Management
+///
+/// The manager maintains internal state for connection pooling and failover handling.
+/// It automatically handles HTTP 307 redirects to backend nodes and retries failed
+/// requests according to the configured retry settings.
 pub struct StreamLoadManager {
+    /// Internal HTTP client for network operations
     http_client: StarRocksHttpClient,
+    /// Table-specific properties for data loading
     properties: StreamLoadTableProperties,
 }
 
 impl StreamLoadManager {
+    /// Creates a new [`StreamLoadManager`] with the specified configuration.
+    ///
+    /// # Arguments
+    ///
+    /// * `config` - Connection and retry configuration
+    /// * `properties` - Table-specific loading properties
+    ///
+    /// # Returns
+    ///
+    /// Returns `Result<StreamLoadManager, Error>` indicating success or failure.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The provided URLs are invalid
+    /// - Network configuration fails
+    /// - Connection setup encounters issues
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// use starrocks_stream_load::{DataFormat, StreamLoadConfig, StreamLoadManager, StreamLoadTableProperties};
+    ///
+    /// let config = StreamLoadConfig::builder(
+    ///     vec!["http://127.0.0.1:8030".to_string()],
+    ///     "my_database".to_string(),
+    ///     "admin".to_string(),
+    /// )
+    /// .password("your_password")
+    /// .build();
+    ///
+    /// let properties = StreamLoadTableProperties::builder()
+    ///     .table("my_table")
+    ///     .format(DataFormat::CSV)
+    ///     .column_separator(",")
+    ///     .build();
+    ///
+    /// let manager = StreamLoadManager::new(config, properties)?;
+    /// ```
     pub fn new(config: StreamLoadConfig, properties: StreamLoadTableProperties) -> Result<Self> {
         Ok(Self {
             http_client: StarRocksHttpClient::new(config)?,
@@ -20,16 +98,40 @@ impl StreamLoadManager {
         })
     }
 
+    /// Provides access to the internal HTTP client.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the [`StarRocksHttpClient`] used for network operations.
+    ///
+    /// # Use Cases
+    ///
+    /// This method can be useful for advanced scenarios where direct access to
+    /// the HTTP client is needed, such as custom request handling or debugging.
     #[must_use]
     pub fn client(&self) -> &StarRocksHttpClient {
         &self.http_client
     }
 
+    /// Provides access to the table properties configuration.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the [`StreamLoadTableProperties`] used for data loading.
+    ///
+    /// # Use Cases
+    ///
+    /// Useful for inspecting current configuration or dynamically modifying
+    /// table-level settings between operations.
     #[must_use]
     pub fn properties(&self) -> &StreamLoadTableProperties {
         &self.properties
     }
 
+    /// Determines the default database name for operations.
+    ///
+    /// Uses the table properties database if set, otherwise falls back to
+    /// the connection configuration database.
     fn default_db(&self) -> &str {
         self.properties
             .database
@@ -37,11 +139,60 @@ impl StreamLoadManager {
             .unwrap_or(&self.http_client.config().database)
     }
 
+    /// Determines the default table name for operations.
+    ///
+    /// Returns the table name from properties if set, otherwise returns an empty string.
     fn default_table(&self) -> &str {
         self.properties.table.as_deref().unwrap_or("")
     }
 
     /// V1 API - Direct Standard Synchronous Load
+    ///
+    /// Sends a single batch of data to `StarRocks` using the synchronous V1 API.
+    /// This method attempts to load the data immediately and blocks until completion.
+    ///
+    /// # Arguments
+    ///
+    /// * `label` - Unique identifier for this load operation (must not contain slashes)
+    /// * `data` - Raw data bytes to load
+    ///
+    /// # Returns
+    ///
+    /// Returns `Result<StreamLoadResponse, Error>` containing the load result.
+    ///
+    /// # Notes
+    ///
+    /// - This is the V1 API suitable for simple, non-critical data loading
+    /// - For ACID guarantees, use the V2 API (`begin_transaction`, `prepare_transaction`, etc.)
+    /// - Label uniqueness is important - duplicate labels may cause conflicts
+    /// - The default database and table from properties are used
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// use starrocks_stream_load::StreamLoadManager;
+    /// use bytes::Bytes;
+    ///
+    /// #[tokio::main]
+    /// async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    ///     // Assume manager is already configured
+    ///     let manager: StreamLoadManager = /* ... */;
+    ///
+    ///     let data = Bytes::from("1,John,Doe\n2,Jane,Smith\n");
+    ///     let response = manager.send_single_batch("batch_001", data).await?;
+    ///
+    ///     assert_eq!(response.status, "Success");
+    ///     Ok(())
+    /// }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Header building fails
+    /// - Label contains invalid characters
+    /// - Network request fails
+    /// - Stream load operation fails on the server
     pub async fn send_single_batch(&self, label: &str, data: Bytes) -> Result<StreamLoadResponse> {
         let db = self.default_db();
         let table = self.default_table();
@@ -84,6 +235,14 @@ impl StreamLoadManager {
     }
 
     /// V2 API - Begin 2PC Transaction
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Label contains invalid characters  
+    /// - Network request fails
+    /// - Transaction creation fails on the server
+    /// - Response parsing fails
     pub async fn begin_transaction(&self, label: &str) -> Result<i64> {
         let db = self.default_db();
         let path = "/api/transaction/begin";
@@ -147,6 +306,15 @@ impl StreamLoadManager {
     }
 
     /// V2 API - Load block chunk inside transaction
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Label contains invalid characters
+    /// - Header building fails
+    /// - Network request fails
+    /// - Data loading fails on the server
+    /// - Response parsing fails
     pub async fn load_transaction_data(
         &self,
         label: &str,
@@ -205,6 +373,14 @@ impl StreamLoadManager {
     }
 
     /// V2 API - Pre-commit / Flush to immutable state
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Label contains invalid characters
+    /// - Network request fails
+    /// - Transaction preparation fails on the server
+    /// - Response parsing fails
     pub async fn prepare_transaction(&self, label: &str) -> Result<StreamLoadResponse> {
         let db = self.default_db();
         let path = "/api/transaction/prepare";
@@ -262,6 +438,14 @@ impl StreamLoadManager {
     }
 
     /// V2 API - Commit changes safely to storage engine
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Label contains invalid characters
+    /// - Network request fails
+    /// - Transaction commit fails on the server
+    /// - Response parsing fails
     pub async fn commit_transaction(&self, label: &str) -> Result<StreamLoadResponse> {
         let db = self.default_db();
         let path = "/api/transaction/commit";
@@ -324,6 +508,14 @@ impl StreamLoadManager {
     }
 
     /// V2 API - Abort ongoing transactional block
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Label contains invalid characters
+    /// - Network request fails
+    /// - Transaction rollback fails on the server
+    /// - Response parsing fails
     pub async fn rollback_transaction(&self, label: &str) -> Result<StreamLoadResponse> {
         let db = self.default_db();
         let path = "/api/transaction/rollback";
@@ -381,6 +573,13 @@ impl StreamLoadManager {
     }
 
     /// Retrieve Status for a given label
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Network request fails
+    /// - Status retrieval fails on the server
+    /// - Response parsing fails
     pub async fn get_load_status(&self, label: &str) -> Result<StreamLoadResponse> {
         let db = self.default_db();
         let path = format!("/api/{db}/get_load_state?label={label}");
@@ -406,6 +605,13 @@ impl StreamLoadManager {
     }
 
     /// Cancel a load transaction
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Network request fails
+    /// - Load cancellation fails on the server
+    /// - Response parsing fails
     pub async fn cancel_load(
         &self,
         label: &str,
@@ -435,6 +641,13 @@ impl StreamLoadManager {
     }
 
     /// Fetch the error log from the given URL. If sanitize is true, it will redact sensitive row/column details.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - URL is invalid
+    /// - Network request fails
+    /// - Response text retrieval fails
     pub async fn get_error_log(&self, error_url: &str, sanitize: bool) -> Result<String> {
         if !error_url.starts_with("http://") && !error_url.starts_with("https://") {
             return Err(Error::Transaction("Invalid error log URL".to_string()));
@@ -582,6 +795,13 @@ pub fn build_headers(props: &StreamLoadTableProperties) -> Result<reqwest::heade
     Ok(headers)
 }
 
+/// Converts a delimiter configuration to the proper format.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The delimiter is null or empty
+/// - The delimiter format is invalid
 pub fn convert_delimiter(origin_str: &str) -> Result<String> {
     if origin_str.is_empty() {
         return Err(Error::Transaction(

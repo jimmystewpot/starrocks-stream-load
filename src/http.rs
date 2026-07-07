@@ -15,6 +15,13 @@ pub struct StarRocksHttpClient {
 }
 
 impl StarRocksHttpClient {
+    /// Creates a new HTTP client with the given configuration.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - HTTP client construction fails
+    /// - Any of the provided URLs are invalid
     pub fn new(config: StreamLoadConfig) -> Result<Self> {
         // Disable automatic redirect follow, as we will handle 307 manually
         // to preserve headers and body repeatability.
@@ -81,6 +88,15 @@ impl StarRocksHttpClient {
         &urls[pos]
     }
 
+    /// Executes an HTTP request with automatic retry and failover logic.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - No configured load URLs are available
+    /// - URL path joining fails
+    /// - Network request fails after all retry attempts
+    /// - HTTP response indicates failure
     pub async fn execute_request(
         &self,
         method: Method,
@@ -175,6 +191,13 @@ impl StarRocksHttpClient {
         }))
     }
 
+    /// Executes a GET request to the specified URL.
+ ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Network request fails
+    /// - URL is invalid
     pub async fn get_request(&self, url: &str) -> Result<Response> {
         let mut builder = self.client.get(url);
         if let Some(ref auth) = self.auth_header {

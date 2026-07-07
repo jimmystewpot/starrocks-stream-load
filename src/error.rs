@@ -1,19 +1,86 @@
 use std::fmt;
 
+/// Comprehensive error types for `StarRocks` stream load operations.
+///
+/// This enum represents all possible errors that can occur during
+/// stream load operations, from network issues to `StarRocks`-specific failures.
+///
+/// # Variants
+///
+/// * `Network` - Network-level errors (connectivity, timeouts, etc.)
+/// * `StarRocksFailure` - `StarRocks` server errors with detailed information
+/// * `Transaction` - Transaction lifecycle and state errors
+/// * `UrlParse` - URL parsing errors for endpoint addresses
+/// * `Json` - JSON serialization/deserialization errors
+/// * `Io` - Input/output errors for data handling
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use starrocks_stream_load::{Error, StreamLoadConfig, StreamLoadManager, StreamLoadTableProperties};
+///
+/// async fn handle_stream_load() -> Result<(), Box<dyn std::error::Error>> {
+///     let config = StreamLoadConfig::builder(
+///         vec!["http://invalid-url".to_string()],
+///         "db".to_string(),
+///         "user".to_string(),
+///     ).build();
+///
+///     let properties = StreamLoadTableProperties::builder().table("t").build();
+///
+///     match StreamLoadManager::new(config, properties) {
+///         Ok(manager) => { /* use manager */ }
+///         Err(Error::Network(e)) => {
+///             eprintln!("Network error: {}", e);
+///         }
+///         Err(Error::StarRocksFailure { status, message, .. }) => {
+///             eprintln!("StarRocks error [{}]: {}", status, message);
+///         }
+///         Err(other) => {
+///             eprintln!("Unexpected error: {}", other);
+///         }
+///     }
+///
+///     Ok(())
+/// }
+/// ```
 #[derive(Debug)]
 pub enum Error {
+    /// Network-level errors including connectivity issues and timeouts
     Network(reqwest::Error),
+    /// `StarRocks` server errors with detailed status and message information
     StarRocksFailure {
+        /// HTTP status or `StarRocks` response status
         status: String,
+        /// Detailed error message from `StarRocks`
         message: String,
+        /// Optional URL to detailed error logs (if available)
         error_log_url: Option<String>,
     },
+    /// Transaction lifecycle errors (begin, prepare, commit, rollback failures)
     Transaction(String),
+    /// URL parsing errors for endpoint addresses
     UrlParse(url::ParseError),
+    /// JSON serialization/deserialization errors
     Json(serde_json::Error),
+    /// Input/output errors for data handling
     Io(std::io::Error),
 }
 
+/// Type alias for Result with [`Error`] as the error type.
+///
+/// This is the standard result type returned by all SDK operations.
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use starrocks_stream_load::{Result, StreamLoadManager};
+///
+/// async fn load_data() -> Result<()> {
+///     // Returns Result<(), Error>
+///     Ok(())
+/// }
+/// ```
 pub type Result<T> = std::result::Result<T, Error>;
 
 impl std::error::Error for Error {
