@@ -1,3 +1,5 @@
+[![Latest Version](https://img.shields.io/crates/v/starrocks-stream-load)](https://crates.io/crates/starrocks-stream-load)
+[![Documentation](https://docs.rs/starrocks-stream-load/badge.svg)](https://docs.rs/starrocks-stream-load)
 [![codecov](https://codecov.io/github/jimmystewpot/starrocks-stream-load/graph/badge.svg?token=EZKEKTR0F1)](https://codecov.io/github/jimmystewpot/starrocks-stream-load)
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=jimmystewpot_starrocks-stream-load&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=jimmystewpot_starrocks-stream-load)
 
@@ -109,6 +111,183 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 ```
+
+## Production Best Practices
+
+This SDK provides core building blocks for StarRocks stream loading, but for production deployments, applications should implement additional resilience patterns:
+
+### Retry Strategy
+Implement exponential backoff with jitter to handle transient failures:
+
+```rust
+async fn with_backoff<F, Fut, T>(mut f: F, max_attempts: usize) -> Result<T, Error>
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = Result<T, Error>>,
+{
+    for attempt in 0..max_attempts {
+        match f().await {
+            Ok(result) => return Ok(result),
+            Err(e) if attempt < max_attempts - 1 => {
+                let delay_ms = 100 * 2u64.pow(attempt as u32);
+                tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+            }
+            Err(e) => return Err(e),
+        }
+    }
+    unreachable!()
+}
+```
+
+### Circuit Breaker
+Prevent cascading failures by implementing circuit breakers around critical operations:
+
+```rust
+use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+
+struct CircuitBreaker {
+    state: AtomicU8, // 0=closed, 1=open, 2=half-open
+    failures: AtomicU64,
+    last_failure: AtomicU64,
+}
+
+impl CircuitBreaker {
+    async fn call<F, Fut, T>(&self, f: F) -> Result<T, Error>
+    where
+        F: FnOnce() -> Fut,
+        Fut: Future<Output = Result<T, Error>>,
+    {
+        if !self.can_proceed() {
+            return Err(Error::Transaction("Circuit breaker open".to_string()));
+        }
+        
+        let result = f().await;
+        match &result {
+            Ok(_) => self.record_success(),
+            Err(_) => self.record_failure(),
+        }
+        result
+    }
+    
+    fn can_proceed(&self) -> bool {
+        // Circuit breaker logic
+        true
+    }
+    
+    fn record_success(&self) {
+        self.state.store(0, Ordering::Relaxed);
+        self.failures.store(0, Ordering::Relaxed);
+    }
+    
+    fn record_failure(&self) {
+        let failures = self.failures.fetch_add(1, Ordering::Relaxed) + 1;
+        if failures >= 5 {
+            self.state.store(1, Ordering::Relaxed);
+        }
+    }
+}
+```
+
+### Monitoring & Metrics
+Track request success rates, latencies, and error rates:
+
+```rust
+use std::sync::atomic::{AtomicU64, AtomicUsize};
+use std::sync::Arc;
+use std::time::Instant;
+
+struct LoadMetrics {
+    requests: AtomicUsize,
+    successes: AtomicUsize,
+    failures: AtomicUsize,
+    latency_ms: AtomicU64,
+}
+
+impl LoadMetrics {
+    fn track<F, Fut, T>(&self, f: F) -> Result<T, Error>
+    where
+        F: FnOnce() -> Fut,
+        Fut: Future<Output = Result<T, Error>>,
+    {
+        self.requests.fetch_add(1, Ordering::Relaxed);
+        let start = Instant::now();
+        
+        let result = f().await;
+        let elapsed = start.elapsed().as_millis() as u64;
+        
+        match result {
+            Ok(value) => {
+                self.successes.fetch_add(1, Ordering::Relaxed);
+                self.latency_ms.fetch_add(elapsed, Ordering::Relaxed);
+                Ok(value)
+            }
+            Err(e) => {
+                self.failures.fetch_add(1, Ordering::Relaxed);
+                Err(e)
+            }
+        }
+    }
+    
+    fn success_rate(&self) -> f64 {
+        let total = self.requests.load(Ordering::Relaxed);
+        if total == 0 { return 0.0; }
+        (self.successes.load(Ordering::Relaxed) as f64 / total as f64) * 100.0
+    }
+}
+```
+
+### Transaction State Management
+For 2PC transactions, implement proper state tracking and recovery procedures:
+
+```rust
+use std::collections::HashMap;
+use std::sync::Mutex;
+
+#[derive(Clone)]
+enum TxnState {
+    Begun(i64),
+    Prepared,
+    Committed,
+    Aborted,
+}
+
+struct TransactionTracker {
+    transactions: Mutex<HashMap<String, TxnState>>,
+}
+
+impl TransactionTracker {
+    fn begin(&self, label: String, txn_id: i64) {
+        self.transactions.lock().unwrap()
+            .insert(label, TxnState::Begun(txn_id));
+    }
+    
+    fn prepare(&self, label: String) -> Result<(), Error> {
+        let mut txns = self.transactions.lock().unwrap();
+        match txns.get_mut(&label) {
+            Some(state) => {
+                *state = TxnState::Prepared;
+                Ok(())
+            }
+            None => Err(Error::Transaction("Unknown transaction".to_string())),
+        }
+    }
+    
+    fn commit(&self, label: String) -> Result<(), Error> {
+        let mut txns = self.transactions.lock().unwrap();
+        match txns.get_mut(&label) {
+            Some(state) => {
+                *state = TxnState::Committed;
+                Ok(())
+            }
+            None => Err(Error::Transaction("Unknown transaction".to_string())),
+        }
+    }
+}
+```
+
+See [AGENTS.md](AGENTS.md) for complete production implementation examples and operational guidelines.
 
 ## Detailed Configuration Parameters
 
