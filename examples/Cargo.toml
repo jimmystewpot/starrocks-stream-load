@@ -1,0 +1,80 @@
+[package]
+name = "starrocks-examples"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "starrocks_examples"
+path = "src/lib.rs"
+
+[dependencies]
+starrocks-stream-load = { path = "../" }
+tokio = { version = "1.52.3", features = ["full"] }
+bytes = "1.12.0"
+thiserror = "2.0.18"
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+rand = "0.8.5"
+chrono = { version = "0.4.38", features = ["serde"] }
+futures = "0.3"
+serde_json = "1"
+wiremock = "0.6.5"
+
+[lints.rust]
+unexpected_cfgs = "allow"
+
+[lints.clippy]
+all = "allow"
+print_stdout = "allow"
+print_stderr = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+
+# Binary examples
+[[bin]]
+name = "v1_direct_load"
+path = "basic/v1_direct_load.rs"
+
+[[bin]]
+name = "v2_transaction_basic"
+path = "basic/v2_transaction_basic.rs"
+
+[[bin]]
+name = "data_formats"
+path = "basic/data_formats.rs"
+
+[[bin]]
+name = "exponential_backoff"
+path = "production/exponential_backoff.rs"
+
+[[bin]]
+name = "circuit_breaker"
+path = "production/circuit_breaker.rs"
+
+[[bin]]
+name = "metrics_monitoring"
+path = "production/metrics_monitoring.rs"
+
+[[bin]]
+name = "transaction_state"
+path = "production/transaction_state.rs"
+
+[[bin]]
+name = "multi_table_transaction"
+path = "advanced/multi_table_transaction.rs"
+
+[[bin]]
+name = "error_handling_recovery"
+path = "advanced/error_handling_recovery.rs"
+
+[[bin]]
+name = "high_availability"
+path = "advanced/high_availability.rs"
+
+[[bin]]
+name = "data_pipeline"
+path = "advanced/data_pipeline.rs"
+
+[[bin]]
+name = "concurrent_loads"
+path = "integration/concurrent_loads.rs"

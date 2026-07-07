@@ -1,3 +1,6 @@
+[workspace]
+members = [".", "examples"]
+
 [package]
 name = "starrocks-stream-load"
 description = "StarRocks Stream Load SDK for Rust."

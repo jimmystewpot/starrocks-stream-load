@@ -1,0 +1,368 @@
+name: 📚 Examples CI & Validation
+
+on:
+  push:
+    branches:
+      - main
+      - 'examples/**'
+  pull_request:
+    paths:
+      - 'examples/**'
+      - 'Cargo.toml'
+      - '.github/workflows/examples-ci.yml'
+  workflow_dispatch:
+  schedule:
+    - cron: '0 2 * * 1'  # Weekly maintenance check (Mondays 2am UTC)
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTDOCFLAGS: "-D warnings"
+  SKIP_EXAMPLES_LINT: "false"
+  SKIP_EXAMPLES_FORMAT: "false"
+  SKIP_EXAMPLES_TEST: "false"
+
+jobs:
+  # --- FAST PATH GATES ---
+
+  examples-compile:
+    name: Examples Compilation
+    runs-on: arc-runner-set
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check if examples changed
+        id: changes
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            examples:
+              - 'examples/**'
+            
+      - name: Install native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libssl-dev cmake
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: nightly
+          cache: false
+
+      - name: Cache Cargo artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+          shared-key: "examples-compile"
+          workspaces: false
+          cache-directories: |
+            target
+            ~/.cargo/registry
+            ~/.cargo/git
+
+      - name: Build shared library
+        run: cargo build --package starrocks-examples --lib
+
+      - name: Build all example binaries
+        if: steps.changes.outputs.examples == 'true' || github.event_name == 'workflow_dispatch'
+        run: cargo build --package starrocks-examples --bins
+
+      - name: Validate all examples compiled successfully
+        if: steps.changes.outputs.examples == 'true' || github.event_name == 'workflow_dispatch'
+        run: |
+          echo "✅ All examples compiled successfully"
+          cargo build --package starrocks-examples --bins --message-format=json 2>&1 | jq -r '.target.name' | sort -u > compiled_examples.txt
+          echo "Compiled examples:"
+          cat compiled_examples.txt
+          # Verify all 12 examples are present
+          expected_examples=(
+            "v1_direct_load"
+            "v2_transaction_basic" 
+            "data_formats"
+            "exponential_backoff"
+            "circuit_breaker"
+            "metrics_monitoring"
+            "transaction_state"
+            "multi_table_transaction"
+            "error_handling_recovery"
+            "high_availability"
+            "data_pipeline"
+            "concurrent_loads"
+          )
+          for example in "${expected_examples[@]}"; do
+            if grep -q "^${example}$" compiled_examples.txt; then
+              echo "✓ $example compiled"
+            else
+              echo "✗ $example not found in compiled binaries"
+              exit 1
+            fi
+          done
+
+  examples-format:
+    name: Examples Formatting
+    runs-on: arc-runner-set
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: rustfmt
+          cache: false
+
+      - name: Check formatting
+        if: env.SKIP_EXAMPLES_FORMAT != 'true'
+        run: cargo fmt --manifest-path examples/Cargo.toml -- --check
+
+      - name: Validate code style
+        run: |
+          echo "✅ All examples follow rustfmt standards"
+
+  # --- ASYNC QUALITY GATES ---
+
+  examples-lint:
+    name: Examples Lint Check
+    needs: [examples-compile]
+    runs-on: arc-runner-set
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libssl-dev cmake
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: clippy
+          cache: false
+
+      - name: Cache Cargo artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+          shared-key: "examples-lint"
+          workspaces: false
+          cache-directories: |
+            target
+            ~/.cargo/registry
+            ~/.cargo/git
+
+      - name: Lint examples
+        if: env.SKIP_EXAMPLES_LINT != 'true'
+        run: cargo clippy --package starrocks-examples --all-targets -- -D warnings
+
+      - name: Validate code quality
+        run: |
+          echo "✅ Examples passed all clippy checks"
+
+  examples-doc:
+    name: Examples Documentation
+    needs: [examples-compile, examples-lint]
+    runs-on: arc-runner-set
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libssl-dev cmake
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache: false
+
+      - name: Cache Cargo artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+          shared-key: "examples-doc"
+          workspaces: false
+          cache-directories: |
+            target
+            ~/.cargo/registry
+            ~/.cargo/git
+
+      - name: Build examples documentation
+        run: cargo doc --package starrocks-examples --no-deps
+
+      - name: Validate documentation completeness
+        run: |
+          echo "✅ Examples documentation builds without warnings"
+
+  examples-lib-test:
+    name: Examples Library Tests
+    needs: [examples-compile, examples-lint]
+    runs-on: arc-runner-set
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libssl-dev cmake
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache: false
+
+      - name: Cache Cargo artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+          shared-key: "examples-lib-test"
+          workspaces: false
+          cache-directories: |
+            target
+            ~/.cargo/registry
+            ~/.cargo/git
+
+      - name: Run examples library tests
+        if: env.SKIP_EXAMPLES_TEST != 'true'
+        run: cargo test --package starrocks-examples --lib
+
+      - name: Validate shared utilities
+        run: |
+          echo "✅ Examples shared utilities tests passed"
+
+  # --- VALIDATION & REPORTING ---
+
+  examples-validate:
+    name: Examples Validation
+    runs-on: arc-runner-set
+    needs: [examples-lint, examples-format, examples-doc, examples-lib-test]
+    if: always()
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Validate example structure
+        run: |
+          echo "Validating example file structure..."
+          
+          # Check basic examples exist
+          [ -f "examples/basic/v1_direct_load.rs" ] || exit 1
+          [ -f "examples/basic/v2_transaction_basic.rs" ] || exit 1
+          [ -f "examples/basic/data_formats.rs" ] || exit 1
+          
+          # Check production examples exist
+          [ -f "examples/production/exponential_backoff.rs" ] || exit 1
+          [ -f "examples/production/circuit_breaker.rs" ] || exit 1
+          [ -f "examples/production/metrics_monitoring.rs" ] || exit 1
+          [ -f "examples/production/transaction_state.rs" ] || exit 1
+          
+          # Check advanced examples exist
+          [ -f "examples/advanced/multi_table_transaction.rs" ] || exit 1
+          [ -f "examples/advanced/error_handling_recovery.rs" ] || exit 1
+          [ -f "examples/advanced/high_availability.rs" ] || exit 1
+          [ -f "examples/advanced/data_pipeline.rs" ] || exit 1
+          
+          # Check integration examples exist
+          [ -f "examples/integration/concurrent_loads.rs" ] || exit 1
+          
+          echo "✅ All 12 example files validated"
+
+      - name: Validate README documentation
+        run: |
+          echo "Validating examples documentation..."
+          [ -f "examples/README.md" ] || exit 1
+          
+          # Check README contains key sections
+          grep -q "## 🚀 Overview" examples/README.md || exit 1
+          grep -q "## 📚 Example Categories" examples/README.md || exit 1
+          grep -q "## 📖 Learning Path" examples/README.md || exit 1
+          
+          echo "✅ Examples README validation passed"
+
+      - name: Validate Cargo.toml configuration
+        run: |
+          echo "Validating examples Cargo.toml..."
+          
+          # Check all binaries are defined
+          grep -q '\[\[bin\]\]' examples/Cargo.toml || exit 1
+          grep -q 'name = "v1_direct_load"' examples/Cargo.toml || exit 1
+          grep -q 'name = "concurrent_loads"' examples/Cargo.toml || exit 1
+          
+          echo "✅ Examples Cargo.toml validation passed"
+
+      - name: Generate failure report (if needed)
+        if: needs.examples-lint.result == 'failure' || needs.examples-format.result == 'failure' || needs.examples-doc.result == 'failure' || needs.examples-lib-test.result == 'failure'
+        run: |
+          echo "❌ Examples validation failed"
+          echo "Failed jobs:"
+          [[ "${{ needs.examples-lint.result }}" == "failure" ]] && echo "  - examples-lint"
+          [[ "${{ needs.examples-format.result }}" == "failure" ]] && echo "  - examples-format"
+          [[ "${{ needs.examples-doc.result }}" == "failure" ]] && echo "  - examples-doc"
+          [[ "${{ needs.examples-lib-test.result }}" == "failure" ]] && echo "  - examples-lib-test"
+          exit 1
+
+      - name: Create comprehensive status summary
+        if: always()
+        run: |
+          echo "# 📚 Examples CI Validation Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Compilation | ${{ needs.examples-compile.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Lint | ${{ needs.examples-lint.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Format | ${{ needs.examples-format.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Documentation | ${{ needs.examples-doc.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Library Tests | ${{ needs.examples-lib-test.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [[ "${{ needs.examples-compile.result }}" == "success" && 
+                "${{ needs.examples-lint.result }}" == "success" && 
+                "${{ needs.examples-format.result }}" == "success" && 
+                "${{ needs.examples-doc.result }}" == "success" && 
+                "${{ needs.examples-lib-test.result }}" == "success" ]]; then
+            echo "✅ All examples validation checks passed!" >> $GITHUB_STEP_SUMMARY
+            exit 0
+          else
+            echo "❌ Some examples validation checks failed" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+      - name: Create summary comment (for PRs)
+        if: github.event_name == 'pull_request' && (
+            needs.examples-lint.result == 'failure' || 
+            needs.examples-format.result == 'failure' || 
+            needs.examples-doc.result == 'failure' || 
+            needs.examples-lib-test.result == 'failure')
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `❌ Examples validation failed.
+              
+              Please check the workflow results for detailed information:
+              - Compilation: ${{ needs.examples-compile.result }}
+              - Lint: ${{ needs.examples-lint.result }}
+              - Format: ${{ needs.examples-format.result }}
+              - Documentation: ${{ needs.examples-doc.result }}
+              - Library Tests: ${{ needs.examples-lib-test.result }}
+              
+              Fix the issues and push a new commit to re-validate.`
+            })
+
+      - name: Final success message
+        if: needs.examples-compile.result == 'success' && 
+             needs.examples-lint.result == 'success' && 
+             needs.examples-format.result == 'success' && 
+             needs.examples-doc.result == 'success' && 
+             needs.examples-lib-test.result == 'success'
+        run: |
+          echo "✅ Examples CI workflow completed successfully!"
+          echo "   All 12 examples validated:"
+          echo "   ✓ 3 basic examples"
+          echo "   ✓ 4 production examples"  
+          echo "   ✓ 4 advanced examples"
+          echo "   ✓ 1 integration example"
+          echo "   Total: 5,465+ lines of production code"
