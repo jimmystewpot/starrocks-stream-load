@@ -58,7 +58,8 @@ docker rm -f quickstart
 Always ensure that the code is formatted and meets the project clippy guidelines before submitting a pull request:
 ```bash
 cargo fmt --all -- --check
-cargo clippy --all-targets --all-features -- -D warnings -W clippy::pedantic -A clippy::missing_errors_doc
+# Run clippy with the desired TLS backend (e.g. rustls)
+cargo clippy --all-targets --features rustls -- -D warnings -W clippy::pedantic -A clippy::missing_errors_doc
 ```
 
 ## Benchmarks

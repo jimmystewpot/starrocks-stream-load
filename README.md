@@ -346,7 +346,8 @@ For manual/step-by-step setup details of E2E testing, see [DEVELOPING.md](DEVELO
 To check lint violations under the strict pedantic guidelines:
 ```bash
 cargo fmt --all -- --check
-cargo clippy --all-targets --all-features -- -D warnings -W clippy::pedantic -A clippy::missing_errors_doc
+# Run clippy with the desired TLS backend (e.g. rustls)
+cargo clippy --all-targets --features rustls -- -D warnings -W clippy::pedantic -A clippy::missing_errors_doc
 ```
 
 ### Running Benchmarks

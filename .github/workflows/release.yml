@@ -59,11 +59,17 @@ jobs:
       - name: Verify code formats
         run: cargo fmt --all -- --check
 
-      - name: Verify clippy lints
-        run: cargo clippy --all-targets --all-features -- -D warnings -W clippy::pedantic -A clippy::missing_errors_doc
+      - name: Verify clippy lints (rustls)
+        run: cargo clippy --all-targets --features rustls -- -D warnings -W clippy::pedantic -A clippy::missing_errors_doc
 
-      - name: Run tests
-        run: cargo test --all-features
+      - name: Verify clippy lints (native-tls)
+        run: cargo clippy --all-targets --features native-tls -- -D warnings -W clippy::pedantic -A clippy::missing_errors_doc
+
+      - name: Run tests (rustls)
+        run: cargo test --features rustls
+
+      - name: Run tests (native-tls)
+        run: cargo test --features native-tls
 
       - name: Build and validate examples
         run: |
