@@ -174,10 +174,10 @@ impl HealthMonitor {
     async fn perform_health_check(&self, _url: &str) -> Result<u64, Box<dyn Error>> {
         // Simulate health check with random success
         use rand::Rng;
-        let success = rand::thread_rng().gen_bool(0.9); // 90% success rate
+        let success = rand::rng().random_bool(0.9); // 90% success rate
 
         if success {
-            let response_time = rand::thread_rng().gen_range(50..200);
+            let response_time = rand::rng().random_range(50..200);
             tokio::time::sleep(Duration::from_millis(response_time)).await;
             Ok(response_time)
         } else {

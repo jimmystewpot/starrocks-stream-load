@@ -100,7 +100,7 @@ where
                     // Add random jitter to prevent thundering herd
                     let jitter_ms = (base_delay.as_millis() as f64 * config.jitter_percent) as u64;
                     let jitter = Duration::from_millis(
-                        rand::thread_rng().gen_range(0..=jitter_ms * 2) - jitter_ms,
+                        rand::rng().random_range(0..=jitter_ms * 2) - jitter_ms,
                     );
 
                     let total_delay = base_delay.saturating_add(jitter);
