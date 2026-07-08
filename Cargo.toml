@@ -4,7 +4,7 @@ members = [".", "examples"]
 [package]
 name = "starrocks-stream-load"
 description = "StarRocks Stream Load SDK for Rust."
-version = "1.0.2"
+version = "1.0.11"
 edition = "2024"
 # rust-version to follow apache arrow-rs which is 1.85
 rust-version = "1.85"
