@@ -27,6 +27,21 @@ tokio = { version = "1.38", features = ["full"] }
 bytes = "1.6"
 ```
 
+### HTTPS / TLS Support
+
+By default, the SDK compiles without any TLS/SSL support to keep dependencies minimal. If you need to connect to a StarRocks cluster over HTTPS, you must explicitly enable either the `rustls` or the `native-tls` feature:
+
+```toml
+# To use rustls:
+starrocks-stream-load = { git = "https://github.com/jimmystewpot/starrocks-stream-load", features = ["rustls"] }
+
+# Or to use native-tls:
+starrocks-stream-load = { git = "https://github.com/jimmystewpot/starrocks-stream-load", features = ["native-tls"] }
+```
+
+> [!IMPORTANT]
+> The `rustls` and `native-tls` features are mutually exclusive. Enabling both will result in a compilation error. Attempting to use `https://` URLs without enabling one of these features will return a runtime configuration error during client initialization.
+
 ## Quick Start
 
 ### 1. V1 API: Synchronous Direct Load
