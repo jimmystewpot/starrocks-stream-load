@@ -142,6 +142,9 @@
 //!
 //! This project is licensed under the MIT License - see the LICENSE file for details.
 
+#[cfg(all(feature = "rustls", feature = "native-tls"))]
+compile_error!("Features 'rustls' and 'native-tls' are mutually exclusive; select only one.");
+
 pub mod config;
 pub mod error;
 pub mod http;

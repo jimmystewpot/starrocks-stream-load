@@ -58,6 +58,16 @@ impl StarRocksHttpClient {
             })
             .collect::<std::result::Result<Vec<Url>, url::ParseError>>()?;
 
+        for url in &parsed_urls {
+            if url.scheme() == "https" {
+                #[cfg(not(any(feature = "rustls", feature = "native-tls")))]
+                return Err(Error::Transaction(
+                    "HTTPS scheme requires either the 'rustls' or 'native-tls' feature to be enabled"
+                        .to_string(),
+                ));
+            }
+        }
+
         Ok(Self {
             client,
             config,
@@ -275,5 +285,32 @@ mod tests {
         assert_eq!(base64_encode("abc"), "YWJj");
         // Longer string
         assert_eq!(base64_encode("hello world"), "aGVsbG8gd29ybGQ=");
+    }
+
+    #[test]
+    fn test_https_validation() {
+        let config = StreamLoadConfig::builder(
+            vec!["https://127.0.0.1:8030".to_string()],
+            "db".to_string(),
+            "admin".to_string(),
+        )
+        .build();
+
+        let client = StarRocksHttpClient::new(config);
+
+        #[cfg(not(any(feature = "rustls", feature = "native-tls")))]
+        {
+            assert!(client.is_err());
+            let err = client.err().unwrap();
+            assert!(
+                err.to_string()
+                    .contains("HTTPS scheme requires either the 'rustls' or 'native-tls' feature")
+            );
+        }
+
+        #[cfg(any(feature = "rustls", feature = "native-tls"))]
+        {
+            assert!(client.is_ok());
+        }
     }
 }
