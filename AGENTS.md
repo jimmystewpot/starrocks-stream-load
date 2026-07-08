@@ -111,6 +111,7 @@ sequenceDiagram
 3. **Rust Lifetimes and Borrowing**: We borrow properties (`&StreamLoadTableProperties`) instead of cloning to keep memory overhead to a minimum during serialization.
 4. **Log Sanitization**: Log messages are passed through `redact_sensitive_info` which uses compiled regex patterns to replace raw credentials with `[REDACTED]` prior to formatting, keeping security leaks out of error payloads.
 5. **Node Routing Failover**: Round-robin frontend URL tracking maintains a sequence indicator. When a node failover triggers, the manager increments this index modulo the length of the configured endpoint addresses.
+6. **Optional Mutually Exclusive TLS Features**: Default is no TLS/SSL. If enabled, the user must select between `rustls` or `native-tls` features. Enabling both is prevented by compile-time error checks in `src/lib.rs`. Initializing the client with `https://` URLs without enabling either feature is validated and rejected with a clear runtime error in `src/http.rs`.
 
 ---
 
