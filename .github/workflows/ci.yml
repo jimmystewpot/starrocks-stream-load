@@ -59,9 +59,15 @@ jobs:
           cache-on-failure: true
           shared-key: "lint"
 
-      - name: cargo clippy
+      - name: cargo clippy (rustls)
         # Use --no-deps for speed in the fast path gate
-        run: cargo clippy --workspace --all-features --all-targets --no-deps -- -D warnings
+        run: cargo clippy --workspace --features rustls --all-targets --no-deps -- -D warnings
+
+      - name: cargo clippy (native-tls)
+        run: cargo clippy --workspace --features native-tls --all-targets --no-deps -- -D warnings
+
+      - name: cargo clippy (no features)
+        run: cargo clippy --workspace --all-targets --no-deps -- -D warnings
 
   unit-test:
     needs: [fmt]
@@ -88,9 +94,15 @@ jobs:
           cache-on-failure: true
           shared-key: "unit-test-no-cov"
 
-      - name: cargo unit tests
+      - name: cargo unit tests (rustls)
         # No coverage instrumentation here for maximum speed in the fast path
-        run: cargo test --workspace --all-features --lib --bins
+        run: cargo test --workspace --features rustls --lib --bins
+
+      - name: cargo unit tests (native-tls)
+        run: cargo test --workspace --features native-tls --lib --bins
+
+      - name: cargo unit tests (no features)
+        run: cargo test --workspace --lib --bins
 
   # --- ASYNC QUALITY GATES ---
 
@@ -124,7 +136,7 @@ jobs:
         uses: taiki-e/install-action@cargo-llvm-cov
 
       - name: cargo coverage
-        run: cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info
+        run: cargo llvm-cov --workspace --features rustls --lcov --output-path lcov.info
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v7.0.0
@@ -157,8 +169,14 @@ jobs:
           cache-on-failure: true
           shared-key: "smoke-test"
 
-      - name: cargo smoke test (integration)
-        run: cargo test --workspace --all-features --tests
+      - name: cargo smoke test (rustls)
+        run: cargo test --workspace --features rustls --tests
+
+      - name: cargo smoke test (native-tls)
+        run: cargo test --workspace --features native-tls --tests
+
+      - name: cargo smoke test (no features)
+        run: cargo test --workspace --tests
 
   bench:
     needs: [lint, unit-test]
@@ -186,7 +204,7 @@ jobs:
           shared-key: "benchmarks"
 
       - name: cargo bench (smoke test)
-        run: cargo bench --workspace --all-features -- --test
+        run: cargo bench --workspace --features rustls -- --test
 
   deny:
     needs: [lint, unit-test]
@@ -235,4 +253,4 @@ jobs:
           shared-key: "doc"
 
       - name: cargo doc
-        run: cargo doc --no-deps --workspace --all-features
+        run: cargo doc --no-deps --workspace --features rustls
