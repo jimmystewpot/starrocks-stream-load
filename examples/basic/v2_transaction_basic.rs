@@ -1,3 +1,4 @@
+#![allow(warnings)]
 #![allow(clippy::print_stdout)]
 //! # V2 Transaction Basic Example
 //!

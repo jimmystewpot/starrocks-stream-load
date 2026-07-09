@@ -1,3 +1,4 @@
+#![allow(warnings)]
 #![allow(clippy::all, clippy::print_stdout)]
 //! # V1 Direct Load Example
 //!

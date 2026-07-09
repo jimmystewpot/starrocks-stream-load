@@ -1,3 +1,4 @@
+#![allow(warnings)]
 //! # Transaction State Management Example
 #![allow(clippy::print_stdout)]
 //!

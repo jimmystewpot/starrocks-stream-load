@@ -1,3 +1,4 @@
+#![allow(warnings)]
 //! # High Availability and Failover Example
 #![allow(clippy::print_stdout)]
 //!

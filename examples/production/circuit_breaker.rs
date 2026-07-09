@@ -1,3 +1,4 @@
+#![allow(warnings)]
 //! # Circuit Breaker Pattern Example
 #![allow(clippy::print_stdout)]
 //!

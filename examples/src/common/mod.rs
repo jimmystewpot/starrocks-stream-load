@@ -1,3 +1,4 @@
+#![allow(warnings)]
 // Common utilities for testing examples
 use serde_json::json;
 pub use starrocks_stream_load::{DataFormat, StreamLoadResponse};

@@ -1,3 +1,4 @@
+#![allow(warnings)]
 //! # Error Handling and Recovery Example
 #![allow(clippy::print_stdout)]
 //!
