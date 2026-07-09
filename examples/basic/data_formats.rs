@@ -1,3 +1,4 @@
+#![allow(warnings)]
 #![allow(
     clippy::print_stdout,
     clippy::needless_raw_string_hashes,

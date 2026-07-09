@@ -1,3 +1,4 @@
+#![allow(warnings)]
 //! # Multi-Table Transaction Example
 #![allow(clippy::print_stdout)]
 //!

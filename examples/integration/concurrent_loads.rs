@@ -1,3 +1,4 @@
+#![allow(warnings)]
 #![allow(clippy::print_stdout)]
 //! # Concurrent Stream Load Operations Example
 //!

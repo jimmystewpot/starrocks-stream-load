@@ -16,6 +16,7 @@ Perfect for getting started and understanding fundamentals.
 | [`v1_direct_load.rs`](basic/v1_direct_load.rs) | Simple one-shot data loading using V1 API | Basic configuration, CSV data loading, response handling |
 | [`v2_transaction_basic.rs`](basic/v2_transaction_basic.rs) | Two-phase commit transaction flow | Transaction lifecycle, atomic operations, error handling |
 | [`data_formats.rs`](basic/data_formats.rs) | Various data format support | CSV, JSON, Arrow, custom delimiters, data transformation |
+| [`arrow_format.rs`](basic/arrow_format.rs) | Dedicated Apache Arrow Format support | Arrow Schema, RecordBatch, IPC Stream Writer serialization, column mapping |
 
 ### 🔵 Production Examples (`examples/production/`)
 Essential patterns for production deployment and resilience.
@@ -74,6 +75,7 @@ cargo test --bin v1_direct_load
 cargo run --bin v1_direct_load
 cargo run --bin v2_transaction_basic
 cargo run --bin data_formats
+cargo run --bin arrow_format
 
 # Production examples
 cargo run --bin exponential_backoff

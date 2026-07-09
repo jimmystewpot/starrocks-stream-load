@@ -1,3 +1,4 @@
+#![allow(warnings)]
 // Common utilities for testing examples
 use serde_json::json;
 pub use starrocks_stream_load::{DataFormat, StreamLoadResponse};
@@ -146,7 +147,7 @@ pub fn assert_success_response(response: &StreamLoadResponse) {
 pub fn generate_test_label(prefix: &str) -> String {
     use chrono::Utc;
     use rand::Rng;
-    let random_suffix: u32 = rand::thread_rng().gen_range(100_000..1_000_000);
+    let random_suffix: u32 = rand::rng().random_range(100_000..1_000_000);
     format!(
         "{}_{}_{}",
         prefix,

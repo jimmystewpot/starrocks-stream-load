@@ -127,6 +127,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+## 📚 Examples
+
+The [`examples/`](examples/README.md) directory contains a comprehensive suite of production-grade reference implementations. These are categorized into:
+
+- **Basic Examples**: Simple configurations for direct load, basic V2 transactions, and various data formats (including Apache Arrow serialization).
+- **Production Patterns**: Robust implementations featuring exponential backoff, circuit breakers, transaction state tracking, and metrics monitoring.
+- **Advanced Integrations**: Cross-table atomic transactions, dead letter queues, and high availability routing.
+- **Integration Tests**: Utilities and scripts for running end-to-end, multi-threaded high-throughput benchmarks.
+
+For a full index and instructions on how to run them, please refer to the [Examples Documentation](examples/README.md).
+
 ## Production Best Practices
 
 This SDK provides core building blocks for StarRocks stream loading, but for production deployments, applications should implement additional resilience patterns:
@@ -318,7 +329,7 @@ See [AGENTS.md](AGENTS.md) for complete production implementation examples and o
 - `enable_multi_table_transaction(bool)`: Allow transactional inserts across multiple target tables under a single label. Default is false.
 
 ### Table Loading Properties (`StreamLoadTablePropertiesBuilder`)
-- `format(DataFormat)`: Input format (`CSV`, `JSON`, `ARROW`).
+- `format(DataFormat)`: Input format (`CSV`, `JSON`, `ARROW`). *Note: When using `ARROW`, you must serialize the data into an Arrow IPC Stream format yourself (e.g., using the `arrow` crate). StarRocks will automatically extract the embedded schema to map columns.*
 - `column_separator(String)`: Column separator for CSV.
 - `row_delimiter(String)`: Row delimiter for CSV.
 - `columns(String)`: List of columns mapped from source input (e.g. `col1, col2, col3`).

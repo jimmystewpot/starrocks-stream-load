@@ -1,3 +1,4 @@
+#![allow(warnings)]
 //! # Metrics and Monitoring Example
 #![allow(clippy::print_stdout)]
 //!

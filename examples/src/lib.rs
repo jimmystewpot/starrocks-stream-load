@@ -1,3 +1,4 @@
+#![allow(warnings)]
 #![allow(clippy::all)]
 
 // Common module for examples

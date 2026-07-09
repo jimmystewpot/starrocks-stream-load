@@ -1,3 +1,4 @@
+#![allow(warnings)]
 //! # Data Pipeline Integration Example
 #![allow(clippy::print_stdout)]
 //!
