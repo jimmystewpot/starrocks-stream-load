@@ -74,7 +74,7 @@ jobs:
         if: steps.changes.outputs.examples == 'true' || github.event_name == 'workflow_dispatch'
         run: |
           echo "✅ All examples compiled successfully"
-          cargo build --package starrocks-examples --bins --message-format=json 2>&1 | jq -r '.target.name' | sort -u > compiled_examples.txt
+          cargo build --package starrocks-examples --bins --message-format=json 2>/dev/null | jq -r 'select(.target.name != null) | .target.name' | sort -u > compiled_examples.txt
           echo "Compiled examples:"
           cat compiled_examples.txt
           # Verify all 12 examples are present
