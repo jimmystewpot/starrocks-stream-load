@@ -16,13 +16,13 @@ exclude = ["test_data/*"]
 
 [dependencies]
 tokio = { version = "1.53.1", features = ["full"] }
-reqwest = { version = "0.13.4", default-features = false, features = ["json", "stream"] }
-serde = { version = "1.0.228", features = ["derive"] }
-serde_json = { version = "1.0.138" }
+reqwest = { version = "0.13.5", default-features = false, features = ["json", "stream"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = { version = "1.0.151" }
 bytes = { version = "1.12.1" }
-thiserror = { version = "2.0.18" }
-tracing = { version = "0.1.41" }
-url = { version = "2.5.4" }
+thiserror = { version = "2.0.20" }
+tracing = { version = "0.1.44" }
+url = { version = "2.5.8" }
 
 [features]
 rustls = ["reqwest/rustls"]

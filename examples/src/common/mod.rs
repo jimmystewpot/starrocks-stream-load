@@ -146,7 +146,7 @@ pub fn assert_success_response(response: &StreamLoadResponse) {
 #[must_use]
 pub fn generate_test_label(prefix: &str) -> String {
     use chrono::Utc;
-    use rand::Rng;
+    use rand::RngExt;
     let random_suffix: u32 = rand::rng().random_range(100_000..1_000_000);
     format!(
         "{}_{}_{}",
