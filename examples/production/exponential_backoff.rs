@@ -24,7 +24,7 @@
 //! the application layer implements retry logic, as per SDK design philosophy.
 
 use bytes::Bytes;
-use rand::Rng;
+use rand::RngExt;
 use starrocks_stream_load::{
     DataFormat, StreamLoadConfig, StreamLoadManager, StreamLoadTableProperties,
 };

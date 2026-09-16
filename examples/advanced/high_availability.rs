@@ -174,7 +174,7 @@ impl HealthMonitor {
     /// Perform actual health check (placeholder)
     async fn perform_health_check(&self, _url: &str) -> Result<u64, Box<dyn Error>> {
         // Simulate health check with random success
-        use rand::Rng;
+        use rand::RngExt;
         let success = rand::rng().random_bool(0.9); // 90% success rate
 
         if success {
