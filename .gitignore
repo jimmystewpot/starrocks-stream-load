@@ -13,6 +13,7 @@
 # Temp files
 *.tmp
 instructions.md
+/.superpowers
 
 # Large uncompressed test data files
 /test_data/72505394728.csv
