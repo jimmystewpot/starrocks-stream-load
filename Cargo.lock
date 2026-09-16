@@ -2154,7 +2154,7 @@ dependencies = [
 
 [[package]]
 name = "starrocks-stream-load"
-version = "1.0.12"
+version = "1.0.13"
 dependencies = [
  "bytes",
  "criterion",
