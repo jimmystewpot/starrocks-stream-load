@@ -7,7 +7,7 @@ This workflow ensures all example programs compile successfully, follow code qua
 
 - **File**: `.github/workflows/examples-ci.yml`
 - **Platform**: arc-runner-set
-- **Scope**: Complete validation of 12 production-grade examples (5,465+ lines of code)
+- **Scope**: Complete validation of 13 production-grade examples (5,465+ lines of code)
 - **Frequency**: On examples changes, PRs, weekly maintenance, and manual trigger
 
 ## 🎯 Purpose
@@ -64,7 +64,7 @@ examples-validate → Comprehensive status summary and reporting
 3. Install dependencies and Rust toolchain
 4. Cache Cargo artifacts for speed
 5. Build shared library
-6. Build all 12 example binaries
+6. Build all 13 example binaries
 7. Validate compilation completeness
 
 **Output**: Compiled examples list and validation status
@@ -116,22 +116,22 @@ examples-validate → Comprehensive status summary and reporting
 **Purpose**: Final validation and comprehensive reporting
 **Steps**:
 1. Checkout repository
-2. Validate example file structure (all 12 examples present)
+2. Validate example file structure (all 13 examples present)
 3. Validate README documentation completeness
 4. Validate Cargo.toml configuration correctness
 5. Generate failure report if needed
 6. Create comprehensive status summary
-7. Add PR comments for failures (if applicable)
-8. Provide final success message
+7. Provide final success message
 
 **Output**: Overall validation status and detailed report
 
 ## 🚀 Examples Validated
 
-### Basic Examples (3)
+### Basic Examples (4)
 - `v1_direct_load` - Simple single-shot data loading
 - `v2_transaction_basic` - Two-phase commit transactions
 - `data_formats` - Multiple data format support
+- `arrow_format` - Apache Arrow IPC streaming data loading
 
 ### Production Examples (4)
 - `exponential_backoff` - Retry strategy with exponential backoff
@@ -171,7 +171,7 @@ SKIP_EXAMPLES_TEST: "true"   # Skip library tests
 ## 📊 Success Criteria
 
 ### Must Pass Checks
-- ✅ All 12 example binaries compile without errors
+- ✅ All 13 example binaries compile without errors
 - ✅ Examples library passes clippy with `-- -D warnings`
 - ✅ All examples follow rustfmt standards
 - ✅ Documentation builds without warnings
@@ -282,7 +282,7 @@ SKIP_EXAMPLES_TEST: "true"   # Skip library tests
 
 ### Success Metrics
 - ✅ Workflow runs successfully 100% of time
-- ✅ All 12 examples compile and validate consistently
+- ✅ All 13 examples compile and validate consistently
 - ✅ Zero false-positive failures
 - ✅ Execution time remains under 5 minutes
 - ✅ Cache hit rates > 80%
