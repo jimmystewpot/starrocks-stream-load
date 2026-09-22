@@ -22,7 +22,6 @@ jobs:
   fmt:
     name: Code Formatting
     runs-on: arc-runner-set
-    if: github.actor != 'dependabot[bot]'
     steps:
       - uses: actions/checkout@v7
       - name: Install Rust toolchain
