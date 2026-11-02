@@ -9,17 +9,15 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-
-  - package-ecosystem: "cargo"
-    directory: "/examples"
-    schedule:
-      interval: "weekly"
+    versioning-strategy: increase
     groups:
       examples-dependencies:
         patterns:
-          - "*"
-    commit-message:
-      prefix: "examples(deps)"
+          - "arrow*"
+          - "rand*"
+          - "chrono"
+          - "futures"
+          - "tracing-subscriber"
 
   - package-ecosystem: "github-actions"
     directory: "/"
