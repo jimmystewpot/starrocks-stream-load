@@ -15,12 +15,12 @@ categories = ["database", "database-implementations", "api-bindings"]
 exclude = ["test_data/*"]
 
 [dependencies]
-tokio = { version = "1.53.1", features = ["full"] }
+tokio = { version = "1.54.1", features = ["full"] }
 reqwest = { version = "0.13.5", default-features = false, features = ["json", "stream"] }
 serde = { version = "1.0.229", features = ["derive"] }
-serde_json = { version = "1.0.151" }
+serde_json = { version = "1.0.154" }
 bytes = { version = "1.12.1" }
-thiserror = { version = "2.0.20" }
+thiserror = { version = "2.0.21" }
 tracing = { version = "0.1.44" }
 url = { version = "2.5.8" }
 
