@@ -6,7 +6,7 @@ This workflow ensures all example programs compile successfully, follow code qua
 ## 📊 Workflow Overview
 
 - **File**: `.github/workflows/examples-ci.yml`
-- **Platform**: arc-runner-set
+- **Platform**: arc-runner-starrocks
 - **Scope**: Complete validation of 13 production-grade examples (5,465+ lines of code)
 - **Frequency**: On examples changes, PRs, weekly maintenance, and manual trigger
 

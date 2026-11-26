@@ -21,7 +21,7 @@ jobs:
 
   fmt:
     name: Code Formatting
-    runs-on: arc-runner-set
+    runs-on: arc-runner-starrocks
     steps:
       - uses: actions/checkout@v7
       - name: Install Rust toolchain
@@ -35,7 +35,7 @@ jobs:
   lint:
     name: Lint Check
     needs: [fmt]
-    runs-on: arc-runner-set
+    runs-on: arc-runner-starrocks
     steps:
       - uses: actions/checkout@v7
         with:
@@ -71,7 +71,7 @@ jobs:
   unit-test:
     needs: [fmt]
     name: Unit Test
-    runs-on: arc-runner-set
+    runs-on: arc-runner-starrocks
     steps:
       - uses: actions/checkout@v7
         with:
@@ -108,7 +108,7 @@ jobs:
   coverage:
     needs: [lint, unit-test]
     name: Code Coverage
-    runs-on: arc-runner-set
+    runs-on: arc-runner-starrocks
     steps:
       - uses: actions/checkout@v7
         with:
@@ -146,7 +146,7 @@ jobs:
   smoke-test:
     needs: [lint, unit-test]
     name: Smoke Test (Integration)
-    runs-on: arc-runner-set
+    runs-on: arc-runner-starrocks
     steps:
       - uses: actions/checkout@v7
         with:
@@ -180,7 +180,7 @@ jobs:
   bench:
     needs: [lint, unit-test]
     name: Benchmarks
-    runs-on: arc-runner-set
+    runs-on: arc-runner-starrocks
     steps:
       - uses: actions/checkout@v7
         with:
@@ -208,7 +208,7 @@ jobs:
   deny:
     needs: [lint, unit-test]
     name: License & Advisory Check
-    runs-on: arc-runner-set
+    runs-on: arc-runner-starrocks
     steps:
       - uses: actions/checkout@v7
 
@@ -229,7 +229,7 @@ jobs:
   doc:
     needs: [lint, unit-test]
     name: Documentation
-    runs-on: arc-runner-set
+    runs-on: arc-runner-starrocks
     steps:
       - uses: actions/checkout@v7
         with:
